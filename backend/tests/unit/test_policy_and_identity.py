@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from conftest import make_settings
 from homeflow.capabilities import Capability
 from homeflow.commands.models import (
     Action,
@@ -13,7 +14,7 @@ from homeflow.commands.models import (
     TargetTemperatureParams,
 )
 from homeflow.commands.policy import ACTION_SPECS, classify, required_capability_for
-from homeflow.config.settings import Environment, Settings
+from homeflow.config.settings import Environment
 from homeflow.devices.identity import device_uuid, room_uuid
 from homeflow.devices.models import LockState
 
@@ -78,7 +79,7 @@ def test_room_ids_are_case_insensitive() -> None:
 
 def test_production_refuses_demo_mode() -> None:
     with pytest.raises(ValueError, match="DEMO_MODE"):
-        Settings(
+        make_settings(
             env=Environment.PRODUCTION,
             demo_mode=True,
             id_salt=SecretStr("s"),
@@ -88,7 +89,7 @@ def test_production_refuses_demo_mode() -> None:
 
 def test_production_refuses_a_development_credential() -> None:
     with pytest.raises(ValueError, match="DEV_CLIENT_TOKEN"):
-        Settings(
+        make_settings(
             env=Environment.PRODUCTION,
             demo_mode=False,
             id_salt=SecretStr("s"),
@@ -99,7 +100,7 @@ def test_production_refuses_a_development_credential() -> None:
 
 def test_production_refuses_a_wildcard_host() -> None:
     with pytest.raises(ValueError, match="ALLOWED_HOSTS"):
-        Settings(
+        make_settings(
             env=Environment.PRODUCTION,
             demo_mode=False,
             id_salt=SecretStr("s"),
@@ -109,4 +110,4 @@ def test_production_refuses_a_wildcard_host() -> None:
 
 def test_non_demo_requires_an_id_salt() -> None:
     with pytest.raises(ValueError, match="ID_SALT"):
-        Settings(env=Environment.DEVELOPMENT, demo_mode=False)
+        make_settings(env=Environment.DEVELOPMENT, demo_mode=False)

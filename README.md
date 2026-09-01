@@ -1,9 +1,10 @@
 # HomeFlow
 
 One coherent interface for a household that is spread across a dozen vendor
-apps. HomeFlow is a **local-first home gateway** plus a thin client: the gateway
-normalises Philips Hue, Sonos, Nuki, Bestway AirJet, Ring, tado°, Miele and
-Alexa into a single canonical API, and the client only ever speaks that API.
+apps. HomeFlow is a **local-first home gateway** plus an installable web client:
+the gateway normalises Philips Hue, Sonos, Nuki, Bestway AirJet, Ring, tado°,
+Miele and Alexa into a single canonical API, and the client only ever speaks
+that API.
 
 > **This repository contains no household data.** Every device, room, address and
 > identifier you can see here is synthetic. Configuration, credentials and
@@ -31,9 +32,9 @@ vendor-specific behaviour into one vocabulary.
 
 ```mermaid
 flowchart LR
-    CLIENT["Household client"]
+    CLIENT["Web client<br/>iPhone home screen"]
     VPN["Private encrypted overlay<br/>Tailscale / WireGuard"]
-    GATEWAY["HomeFlow gateway<br/>FastAPI"]
+    GATEWAY["HomeFlow gateway<br/>FastAPI + client"]
     LOCAL["Local devices<br/>pool, lights, speakers, lock"]
     CLOUD["Vendor clouds<br/>appliances, doorbell, climate"]
 
@@ -142,6 +143,41 @@ Details: [SECURITY.md](SECURITY.md), [threat model](docs/security/threat-model.m
 
 Nothing is marked working until it has been verified against the real device.
 
+## The client
+
+An installable web application, served by the gateway on the same origin, added
+to the iPhone home screen. Same-origin serving is the point: there is no CORS
+configuration and therefore no cross-origin surface, and the WebSocket is
+same-origin too.
+
+It is plain ES modules and hand-written CSS — no bundler, no framework. For a
+handful of screens on a project that controls a door lock, that removes an
+entire dependency tree and lets the Content Security Policy stay strict: no
+inline script, no inline style, no external origin. A unit test enforces all
+three.
+
+What it does:
+
+- room-grouped device cards built from **capabilities**, so a control a device
+  cannot perform never appears;
+- pool card with the live water temperature, a setpoint slider bounded by the
+  device's own limits, and heater, filter, bubbles and panel-lock switches;
+- light, speaker, lock and appliance cards;
+- live updates over the WebSocket, with reconnect and an explicit resync when
+  the gateway had to drop events;
+- honest states: offline, stale, pending — and `UNKNOWN` shown as unknown
+  rather than dressed up as success or failure;
+- the unlock control is visibly disabled with the reason, because the gateway
+  refuses high-risk actions until fresh device-owner authorisation exists.
+
+Browsers cannot set headers on a WebSocket handshake and a credential must never
+sit in a URL, so the client exchanges its credential for a **single-use ticket
+valid 30 seconds** and presents it through `Sec-WebSocket-Protocol`.
+
+The trade-off, recorded in [ADR 0011](docs/adr/0011-installable-web-client.md):
+no widgets, Control Center controls, App Intents, Live Activities or reliable
+background push. Those wait for a native client, which needs a Mac.
+
 ## Demo mode
 
 Demo mode is a first-class feature, not a test fixture. It serves a complete
@@ -153,14 +189,17 @@ enforces that.
 ## Running the gateway locally
 
 ```bash
+cp .env.example .env
+python scripts/generate_client_token.py        # paste into HOMEFLOW_DEV_CLIENT_TOKEN
+python scripts/generate_secret.py              # paste into HOMEFLOW_ID_SALT
+
 cd backend
 uv sync --extra dev
-
-python ../scripts/generate_client_token.py     # paste into ../.env
-cp ../.env.example ../.env                     # then edit
-
 uv run python -m homeflow                      # http://127.0.0.1:8000
 ```
+
+Open `http://127.0.0.1:8000` and paste the access token. The gateway serves both
+the API and the client.
 
 ```bash
 curl -H "Authorization: Bearer $HOMEFLOW_DEV_CLIENT_TOKEN" \
@@ -196,7 +235,7 @@ semantic actions only.
 | Phase | Goal | State |
 | --- | --- | --- |
 | 0 | Safe project foundation | Done |
-| 1 | End-to-end synthetic slice (Demo Pool) | Done, backend side |
+| 1 | End-to-end synthetic slice (Demo Pool), gateway and client | Done |
 | 2 | Bestway AirJet, read-only | Next |
 | 3 | Bestway control, capability by capability | |
 | 4 | Home Assistant adapter | |
@@ -204,15 +243,10 @@ semantic actions only.
 | 6 | Nuki, after client authentication and a security review | |
 | 7–12 | tado°, Miele, Ring, Alexa, usability, analytics | |
 
-## Client status
-
-The client platform is an open decision: see
-[ADR 0010](docs/adr/0010-client-platform-open.md). The gateway API is
-client-neutral, so this decision does not block the phases above.
-
 ## Repository layout
 
 ```text
+apps/web/    installable web client, served by the gateway
 backend/     FastAPI gateway, adapters, tests
 docs/        architecture, ADRs, security and privacy documentation
 infrastructure/  container and deployment material

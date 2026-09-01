@@ -1,4 +1,4 @@
-"""Canonical device model (CLAUDE.md section 25).
+"""Canonical device model (see docs/adr/0008-canonical-capability-model.md).
 
 This module deliberately knows nothing about providers: it must be impossible
 for a provider identifier to reach a client through a domain object.
@@ -83,7 +83,7 @@ class DeviceConstraints(BaseModel):
     """Authoritative per-device limits, declared by the adapter.
 
     Bounds must come from verified device behaviour, never from a guess in the
-    API layer (CLAUDE.md section 16.3).
+    API layer (see docs/adr/0006-bestway-direct-local-adapter.md).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

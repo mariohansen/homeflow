@@ -3,7 +3,7 @@
 Wiring lives in one place so that what a deployment can reach is auditable by
 reading a single file. In demo mode the only registered adapter is the synthetic
 one, which makes it structurally impossible for a demo build to touch a real
-device (CLAUDE.md section 51).
+device (see docs/security/privacy-model.md).
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from homeflow.audit.log import InMemoryAuditLog
 from homeflow.auth.registry import ClientRegistry, build_client_registry
+from homeflow.auth.tickets import TicketStore
 from homeflow.clock import Clock, SystemClock
 from homeflow.commands.service import CommandService
 from homeflow.config.settings import Settings
@@ -33,6 +34,7 @@ class Container:
     bus: EventBus
     audit: InMemoryAuditLog
     clients: ClientRegistry
+    tickets: TicketStore
     registry: DeviceRegistry
     devices: DeviceService
     commands: CommandService
@@ -77,6 +79,7 @@ def build_container(settings: Settings, *, clock: Clock | None = None) -> Contai
         bus=bus,
         audit=audit,
         clients=build_client_registry(settings),
+        tickets=TicketStore(resolved_clock),
         registry=registry,
         devices=devices,
         commands=commands,

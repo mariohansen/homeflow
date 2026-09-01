@@ -1,4 +1,4 @@
-"""Audit records (CLAUDE.md section 45).
+"""Audit records (see SECURITY.md).
 
 Entries reference HomeFlow identifiers only. Provider identifiers, tokens and
 raw parameters of high-risk actions never enter the audit trail.

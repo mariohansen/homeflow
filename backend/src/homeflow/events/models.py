@@ -1,4 +1,4 @@
-"""Normalised internal events (CLAUDE.md section 31)."""
+"""Normalised internal events (see docs/architecture/overview.md)."""
 
 from __future__ import annotations
 

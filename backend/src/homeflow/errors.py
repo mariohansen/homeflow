@@ -1,4 +1,4 @@
-"""Domain errors that map onto safe API problem details (CLAUDE.md section 42).
+"""Domain errors that map onto safe API problem details (see SECURITY.md).
 
 Every ``detail`` is an authored constant. Provider messages, hostnames, entity
 ids and stack traces never travel through these objects.

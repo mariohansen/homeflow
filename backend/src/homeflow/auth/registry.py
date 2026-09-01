@@ -2,7 +2,7 @@
 
 Phase 1 supports a single development credential supplied through the
 environment. The registration and Secure-Enclave challenge flow described in
-CLAUDE.md sections 13 and 38 is a prerequisite for the Nuki phase and is not
+SECURITY.md is a prerequisite for the Nuki phase and is not
 implemented yet; until then the registry simply has no clients in production and
 every request is rejected. Failing closed is intentional.
 """

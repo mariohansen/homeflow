@@ -36,6 +36,24 @@ uv run python -m homeflow
 It binds to `127.0.0.1:8000` and starts in demo mode with a synthetic household.
 Interactive API documentation is available at `/docs` in development only.
 
+## Open the client
+
+The gateway serves the web client on the same origin. Open
+`http://127.0.0.1:8000`, paste the value of `HOMEFLOW_DEV_CLIENT_TOKEN`, and the
+synthetic household appears. The credential is kept in that browser's local
+storage only.
+
+To use it from an iPhone, reach the gateway over the private overlay and add the
+page to the home screen from the share sheet. Installation requires a secure
+context: `localhost` counts, and so does HTTPS from Tailscale Serve — a plain
+`http://` LAN address does not, so the service worker will not install there.
+
+Regenerating the app icons after changing the mark:
+
+```bash
+python scripts/generate_web_icons.py
+```
+
 ## Try it
 
 ```bash
@@ -94,3 +112,13 @@ missing `HOMEFLOW_ID_SALT`.
 
 **pyright cannot find imports.** The environment lives at `backend/.venv`; run
 it through `uv run` or recreate it with `uv sync --extra dev`.
+
+**The client loads but stays on the sign-in screen.** The stored credential was
+rejected, usually because the gateway restarted with a different
+`HOMEFLOW_DEV_CLIENT_TOKEN`. Paste the current one.
+
+**The client shows "Getrennt".** The WebSocket could not be established. Check
+that the gateway is still running; the client retries on its own with backoff.
+
+**A changed file is not picked up in an installed home-screen app.** The service
+worker caches the shell. Close and reopen the app, or remove and re-add it.

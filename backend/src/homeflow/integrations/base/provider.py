@@ -1,4 +1,4 @@
-"""The provider protocol (CLAUDE.md section 27)."""
+"""The provider protocol (see docs/architecture/overview.md)."""
 
 from __future__ import annotations
 

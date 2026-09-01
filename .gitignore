@@ -3,6 +3,10 @@
 # Anything that could identify the household or grant access MUST stay out.
 # ---------------------------------------------------------------------------
 
+# Local assistant instructions, not part of the published project
+CLAUDE.md
+.claude/
+
 # Secrets and runtime configuration
 .env
 .env.*

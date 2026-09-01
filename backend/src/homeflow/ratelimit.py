@@ -1,4 +1,4 @@
-"""Token-bucket rate limiting (CLAUDE.md section 70).
+"""Token-bucket rate limiting (see SECURITY.md).
 
 Applied to authentication and command submission so that a looping client, a
 stuck retry or a hostile process on the private network cannot turn one bug into

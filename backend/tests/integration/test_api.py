@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 PROVIDER_DEVICE_IDS = (
@@ -173,14 +174,19 @@ def test_websocket_requires_authentication(client: TestClient) -> None:
     assert accepted is False
 
 
-def test_websocket_streams_state_changes(client: TestClient, auth: dict[str, str]) -> None:
+def test_websocket_streams_state_changes(
+    client: TestClient, app: FastAPI, auth: dict[str, str]
+) -> None:
     pool = _pool(client, auth)
+    # See test_web_client: the command needs a portal of its own.
+    commander = TestClient(app)
+
     with client.websocket_connect("/v1/ws", headers=auth) as socket:
         hello = socket.receive_json()
         assert hello["type"] == "Hello"
         assert hello["demoMode"] is True
 
-        client.post(
+        commander.post(
             f"/v1/devices/{pool['id']}/commands",
             headers=auth,
             json={"action": "SET_BUBBLES", "parameters": {"on": True}},

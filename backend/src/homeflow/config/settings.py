@@ -1,6 +1,6 @@
 """Typed application configuration.
 
-CLAUDE.md section 74 requires that development conveniences cannot be activated
+The security policy requires that development conveniences cannot be activated
 by accident in production. The validators below fail closed at startup rather
 than logging a warning and continuing.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -67,6 +68,10 @@ class Settings(BaseSettings):
     websocket_rate_limit_per_minute: int = Field(default=120, ge=1)
     #: Bounded per-subscriber event queue; overflow triggers a resync hint.
     event_queue_size: int = Field(default=256, ge=8)
+
+    #: Directory of the installable web client. When unset the gateway looks
+    #: for ``apps/web`` next to the backend and serves it if present.
+    web_client_dir: Path | None = None
 
     #: Demo simulation only. Ignored unless demo_mode is enabled.
     demo_tick_seconds: float = Field(default=2.0, gt=0.0)

@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted, under review — see [ADR 0010](0010-client-platform-open.md).
+Superseded by [ADR 0011](0011-installable-web-client.md).
+
+The reasoning below still holds for a native client; it is the macOS toolchain
+requirement, not the design, that made it unavailable.
 
 ## Context
 

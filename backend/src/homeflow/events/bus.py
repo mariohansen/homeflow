@@ -4,7 +4,7 @@ A slow or stalled subscriber must never grow memory without limit and must never
 block a device adapter, so each subscriber owns a bounded queue. When it
 overflows the oldest event is dropped and the subscriber is flagged as lagged;
 the WebSocket layer turns that flag into a resync hint so a client can never
-silently diverge from real device state (CLAUDE.md section 30).
+silently diverge from real device state (see docs/architecture/overview.md).
 """
 
 from __future__ import annotations

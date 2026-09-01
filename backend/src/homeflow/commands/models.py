@@ -1,4 +1,4 @@
-"""Semantic commands (CLAUDE.md sections 14, 28 and 29).
+"""Semantic commands (see docs/architecture/overview.md).
 
 Only desired-state commands exist; there is no toggle and no raw passthrough, so
 a repeated request cannot flip a device into an unintended state.

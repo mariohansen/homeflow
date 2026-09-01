@@ -1,4 +1,4 @@
-"""Version 1 of the canonical HomeFlow API (CLAUDE.md section 41).
+"""Version 1 of the canonical HomeFlow API (see README.md).
 
 Only semantic HomeFlow actions are exposed. There is no provider passthrough
 route, and no endpoint accepts a provider identifier or a provider URL.

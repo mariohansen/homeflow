@@ -16,7 +16,7 @@ class ProviderDeviceRef(BaseModel):
     """Internal handle for a device at a provider.
 
     Never serialised to a client: the API layer maps HomeFlow UUIDs to refs and
-    back (CLAUDE.md section 18).
+    back (see docs/security/privacy-model.md).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

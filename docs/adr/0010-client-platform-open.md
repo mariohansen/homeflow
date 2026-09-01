@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Resolved by [ADR 0011](0011-installable-web-client.md): option B was chosen.
 
 ## Context
 

@@ -2,7 +2,7 @@
 
 The registry is the only place that knows a provider identifier for a device.
 Nothing it returns to callers carries that identifier, which is what keeps
-CLAUDE.md section 18 enforceable rather than aspirational.
+the privacy model enforceable rather than aspirational.
 
 Single event loop, no threads: no locking is required.
 """
@@ -91,7 +91,7 @@ class DeviceRegistry:
 
         Freshness timestamps only advance while the device is reachable, so an
         offline device keeps showing when its state was last genuinely observed
-        instead of pretending to be current (CLAUDE.md section 30).
+        instead of pretending to be current (see docs/architecture/overview.md).
         """
         current = self.require(device_id)
         reachable = availability is Availability.ONLINE

@@ -39,12 +39,12 @@ tags = ["privacy", "network"]
 description = "Documentation placeholders and synthetic examples"
 paths = [
   '''\.gitleaks\.toml$''',
-  '''CLAUDE\.md$''',
   '''docs/security/privacy-model\.md$''',
   # Detection rules and the tests that prove redaction works contain the
   # synthetic patterns they are meant to catch.
   '''backend/src/homeflow/log\.py$''',
   '''backend/tests/unit/test_log_redaction\.py$''',
+  '''backend/tests/integration/test_web_client\.py$''',
 ]
 regexes = [
   '''replace-me''',

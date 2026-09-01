@@ -1,8 +1,9 @@
 # HomeFlow backend
 
 FastAPI gateway that normalises heterogeneous household devices into one
-canonical API. See the repository root `README.md` for the product overview and
-`../CLAUDE.md` for the architectural and security constraints.
+canonical API. See the repository root `README.md` for the product overview,
+`../SECURITY.md` for the security commitments and `../docs/` for the
+architecture, ADRs and the privacy model.
 
 ```bash
 uv sync --extra dev

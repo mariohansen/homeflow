@@ -6,13 +6,16 @@ import asyncio
 import contextlib
 import random
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from fastapi import FastAPI
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.staticfiles import StaticFiles
 
 from homeflow import __version__
 from homeflow.api.errors import install_error_handlers
 from homeflow.api.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware
+from homeflow.api.v1 import auth as v1_auth
 from homeflow.api.v1 import router as v1_router
 from homeflow.api.v1 import ws as v1_ws
 from homeflow.config.settings import Environment, Settings, get_settings
@@ -32,7 +35,7 @@ async def run_provider_stream(provider: DeviceProvider, devices: DeviceService) 
     """Consume one adapter's event stream, restarting with capped backoff.
 
     A failing adapter must not take the gateway down or starve other providers
-    (CLAUDE.md sections 47 and 48).
+    (see docs/architecture/overview.md).
     """
     backoff = _INITIAL_BACKOFF_SECONDS
     while True:
@@ -47,6 +50,18 @@ async def run_provider_stream(provider: DeviceProvider, devices: DeviceService) 
             jitter = random.random()  # noqa: S311 - backoff spread, not security
             await asyncio.sleep(min(backoff + jitter, _MAX_BACKOFF_SECONDS))
             backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
+
+
+def resolve_web_client_dir(settings: Settings) -> Path | None:
+    """Locate the installable web client, if this deployment ships one.
+
+    The client is served from the same origin as the API. That is what removes
+    CORS from the picture entirely (ADR 0011).
+    """
+    if settings.web_client_dir is not None:
+        return settings.web_client_dir if settings.web_client_dir.is_dir() else None
+    candidate = Path(__file__).resolve().parents[3] / "apps" / "web"
+    return candidate if candidate.is_dir() else None
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -93,13 +108,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/openapi.json" if is_dev else None,
     )
 
-    # No CORS middleware: the client is a native/first-party application and no
-    # browser origin is trusted by default (CLAUDE.md section 73).
+    # No CORS middleware: the web client is served from this same origin, so no
+    # cross-origin request needs to be permitted (see ADR 0011).
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(resolved.allowed_hosts))
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
 
     install_error_handlers(app)
+    app.include_router(v1_auth.router)
     app.include_router(v1_router.router)
     app.include_router(v1_ws.router)
 
@@ -107,5 +123,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthz() -> dict[str, str]:
         """Liveness probe. Deliberately reveals nothing about the household."""
         return {"status": "ok"}
+
+    # Mounted last so that every API route is matched first.
+    web_client = resolve_web_client_dir(resolved)
+    if web_client is not None:
+        app.mount("/", StaticFiles(directory=web_client, html=True), name="web")
 
     return app

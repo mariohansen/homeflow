@@ -2,7 +2,7 @@
 
 A physical device can apply a command after the gateway stopped waiting, so a
 timeout is never reported as a failure. The gateway reads state back once and
-only then decides between SUCCEEDED and UNKNOWN (CLAUDE.md sections 28 and 29).
+only then decides between SUCCEEDED and UNKNOWN (see docs/architecture/overview.md).
 """
 
 from __future__ import annotations

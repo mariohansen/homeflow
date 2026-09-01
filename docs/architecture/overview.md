@@ -104,6 +104,31 @@ If a client is too slow and its bounded event queue overflows, the gateway drops
 the oldest events, flags the subscription and sends a `ResyncRequired` frame.
 The client refetches the snapshot. Silent divergence is not an option.
 
+## The client and its handshake
+
+The gateway also serves the web client as static files, mounted last so every
+API route matches first. Same origin means no CORS and no cross-origin surface.
+
+```mermaid
+sequenceDiagram
+    participant B as Web client
+    participant API as Gateway
+
+    B->>API: GET /v1/devices  (Authorization: Bearer …)
+    API-->>B: snapshot
+    B->>API: POST /v1/auth/ws-ticket  (Authorization: Bearer …)
+    API-->>B: single-use ticket, 30 s
+    B->>API: WebSocket, Sec-WebSocket-Protocol: homeflow.v1, homeflow.ticket.…
+    API->>API: redeem once, in constant time
+    API-->>B: accept, subprotocol homeflow.v1
+    API-->>B: Hello, then normalised events
+```
+
+A browser cannot set an `Authorization` header on a WebSocket handshake, and
+the security policy rules out query-string credentials. The ticket exchange is
+what keeps the long-lived credential out of the handshake; native clients skip
+it and send the header directly.
+
 ## Adapters
 
 ```python
@@ -144,6 +169,7 @@ start.
 ## What is not here yet
 
 - persistence — see [ADR 0009](../adr/0009-deferred-persistence.md);
-- client registration and the fresh action-authorisation flow;
+- client registration and the fresh action-authorisation flow, which for the web
+  client is expected to use WebAuthn platform authenticators;
 - real adapters, starting with read-only Bestway in phase 2;
 - metrics and tracing, which come after the first real adapter.

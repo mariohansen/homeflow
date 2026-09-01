@@ -1,7 +1,7 @@
 """Adapter-level failures.
 
 Provider detail stays inside these exceptions and is only written to sanitized
-local logs; clients receive a stable failure code (CLAUDE.md section 42).
+local logs; clients receive a stable failure code (see SECURITY.md).
 """
 
 from __future__ import annotations

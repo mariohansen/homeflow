@@ -1,4 +1,4 @@
-"""Vendor-independent device taxonomy (CLAUDE.md sections 25 and 26).
+"""Vendor-independent device taxonomy (see docs/adr/0008-canonical-capability-model.md).
 
 `DeviceKind` guides presentation. `Capability` is the authorisation surface:
 a command is only accepted when the device actually declares the capability it

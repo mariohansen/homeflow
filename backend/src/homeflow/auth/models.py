@@ -1,4 +1,4 @@
-"""Household identity model (CLAUDE.md section 13).
+"""Household identity model (see SECURITY.md).
 
 Membership of the private VPN is not authorisation. Every request carries a
 credential belonging to an explicitly registered client that can be revoked on

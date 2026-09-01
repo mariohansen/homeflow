@@ -1,4 +1,4 @@
-"""Safe problem details for every failure path (CLAUDE.md section 42).
+"""Safe problem details for every failure path (see SECURITY.md).
 
 Clients receive a stable machine-readable ``type`` and an authored ``detail``.
 Stack traces, provider bodies, hostnames and internal identifiers stay in the

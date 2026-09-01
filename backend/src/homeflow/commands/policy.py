@@ -1,7 +1,7 @@
 """Action policy: required capability, parameter schema and risk class.
 
-Risk classification is data, not scattered conditionals, so CLAUDE.md section 14
-can be verified by reading one table and one function.
+Risk classification is data, not scattered conditionals, so the policy can be
+verified by reading one table and one function.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def classify(action: Action, params: CommandParams) -> RiskClass:
     """Return the effective risk class for a validated command.
 
     Locking a door is reversible from outside and stays MEDIUM; unlocking grants
-    physical access and is HIGH (CLAUDE.md section 15).
+    physical access and is HIGH (see SECURITY.md).
     """
     spec = ACTION_SPECS[action]
     if action is Action.SET_LOCK_STATE:

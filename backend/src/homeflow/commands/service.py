@@ -1,4 +1,4 @@
-"""The single mutation pipeline (CLAUDE.md section 28).
+"""The single mutation pipeline (see docs/architecture/overview.md).
 
 Every state change in HomeFlow goes through :meth:`CommandService.submit`:
 capability check, parameter validation, device-declared range check, risk
@@ -124,7 +124,7 @@ class CommandService:
         risk = classify(action, params)
         if risk is RiskClass.HIGH:
             # No HIGH-risk action executes until the fresh device-owner
-            # authorisation flow of CLAUDE.md section 38 exists.
+            # authorisation flow described in SECURITY.md exists.
             self._audit_denied(
                 principal, device, action, correlation_id, "action_authorization_required"
             )
@@ -270,7 +270,7 @@ class CommandService:
         """Read state back once after a timeout to decide the real outcome.
 
         There is no retry of the write itself: repeating a physical mutation
-        after an unknown outcome is exactly what CLAUDE.md section 29 forbids.
+        after an unknown outcome is exactly what the command policy forbids.
         """
         self._publish(EventType.COMMAND_TIMED_OUT, command)
         try:

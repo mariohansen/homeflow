@@ -1,6 +1,6 @@
 """Request dependencies: identity and request budgets.
 
-Being on the private network is not authorisation (CLAUDE.md section 13), so
+Being on the private network is not authorisation (see SECURITY.md), so
 every route below `/v1` resolves a registered client here first.
 """
 
@@ -11,6 +11,7 @@ from typing import Annotated
 from fastapi import Depends, Request, WebSocket
 
 from homeflow.auth.models import Principal
+from homeflow.auth.tickets import ticket_from_protocol
 from homeflow.container import Container
 from homeflow.errors import RateLimitedError, UnauthenticatedError
 from homeflow.log import get_logger
@@ -18,6 +19,10 @@ from homeflow.log import get_logger
 _logger = get_logger(__name__)
 
 _BEARER_PREFIX = "Bearer "
+
+#: Subprotocol a browser client offers alongside its ticket, and the one the
+#: server echoes back so the ticket value is not repeated in the response.
+WEBSOCKET_SUBPROTOCOL = "homeflow.v1"
 
 
 def get_container(request: Request) -> Container:
@@ -46,8 +51,8 @@ def authenticate(
 ) -> Principal:
     """Resolve the principal for an HTTP request or a WebSocket handshake.
 
-    Credentials are read from the ``Authorization`` header only: CLAUDE.md
-    section 43 rules out query-string tokens because URLs end up in logs.
+    Credentials are read from the ``Authorization`` header only: the security
+    policy rules out query-string tokens because URLs end up in logs.
     """
     if not container.auth_rate_limiter.allow(_peer(connection)):
         raise RateLimitedError("Too many authentication attempts.")
@@ -58,6 +63,40 @@ def authenticate(
     except UnauthenticatedError:
         _logger.warning("auth.rejected", path=str(connection.url.path))
         raise
+
+
+def authenticate_websocket(
+    websocket: WebSocket,
+    container: Container,
+) -> tuple[Principal, str | None]:
+    """Authenticate a WebSocket handshake and return the subprotocol to echo.
+
+    Native clients send the credential in the ``Authorization`` header. Browsers
+    cannot set headers here, so they present a single-use ticket through
+    ``Sec-WebSocket-Protocol`` instead — never in the URL, which would be logged.
+    """
+    if not container.auth_rate_limiter.allow(_peer(websocket)):
+        raise RateLimitedError("Too many authentication attempts.")
+
+    token = _bearer_token(websocket.headers.get("authorization"))
+    if token is not None:
+        return container.clients.authenticate(token), None
+
+    offered = [
+        item.strip()
+        for item in websocket.headers.get("sec-websocket-protocol", "").split(",")
+        if item.strip()
+    ]
+    for protocol in offered:
+        ticket = ticket_from_protocol(protocol)
+        if ticket is None:
+            continue
+        principal = container.tickets.redeem(ticket)
+        selected = WEBSOCKET_SUBPROTOCOL if WEBSOCKET_SUBPROTOCOL in offered else protocol
+        return principal, selected
+
+    _logger.warning("auth.websocket_rejected")
+    raise UnauthenticatedError
 
 
 def require_principal(

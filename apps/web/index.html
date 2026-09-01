@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0b1f33" />
+    <meta name="referrer" content="no-referrer" />
+
+    <!-- Home-screen installation on iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="HomeFlow" />
+    <link rel="apple-touch-icon" href="icons/icon-180.png" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+
+    <title>HomeFlow</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+
+  <body>
+    <!-- Sign-in ------------------------------------------------------------->
+    <section id="view-connect" class="view view--connect" hidden>
+      <div class="connect">
+        <div class="connect__mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" class="mark">
+            <path
+              class="mark__wave"
+              d="M6 38c7-8 14-8 21 0s14 8 21 0 10-6 10-6"
+              fill="none"
+              stroke-width="5"
+              stroke-linecap="round"
+            />
+            <path
+              class="mark__wave mark__wave--soft"
+              d="M6 50c7-8 14-8 21 0s14 8 21 0 10-6 10-6"
+              fill="none"
+              stroke-width="5"
+              stroke-linecap="round"
+            />
+            <path
+              class="mark__roof"
+              d="M12 26 32 10l20 16"
+              fill="none"
+              stroke-width="5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+        <h1 class="connect__title">HomeFlow</h1>
+        <p class="connect__lead" data-i18n="connect.lead"></p>
+
+        <form id="connect-form" class="connect__form" autocomplete="off">
+          <label class="field">
+            <span class="field__label" data-i18n="connect.tokenLabel"></span>
+            <input
+              id="connect-token"
+              class="field__input"
+              type="password"
+              inputmode="text"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              required
+            />
+          </label>
+          <p id="connect-error" class="connect__error" role="alert" hidden></p>
+          <button id="connect-submit" class="button button--primary" type="submit">
+            <span data-i18n="connect.submit"></span>
+          </button>
+        </form>
+
+        <p class="connect__hint" data-i18n="connect.hint"></p>
+      </div>
+    </section>
+
+    <!-- Application --------------------------------------------------------->
+    <div id="shell" class="shell" hidden>
+      <header class="topbar">
+        <div class="topbar__inner">
+          <h1 id="topbar-title" class="topbar__title"></h1>
+          <div id="link-state" class="link" role="status">
+            <span class="link__dot" aria-hidden="true"></span>
+            <span id="link-label" class="link__label"></span>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <section id="view-home" class="view" hidden>
+          <div id="home-rooms" class="rooms"></div>
+          <p id="home-empty" class="empty" data-i18n="home.empty" hidden></p>
+        </section>
+
+        <section id="view-activity" class="view" hidden>
+          <ul id="activity-list" class="activity"></ul>
+          <p id="activity-empty" class="empty" data-i18n="activity.empty" hidden></p>
+        </section>
+
+        <section id="view-settings" class="view" hidden>
+          <div class="card">
+            <h2 class="card__title" data-i18n="settings.connection"></h2>
+            <dl class="facts">
+              <div class="facts__row">
+                <dt data-i18n="settings.client"></dt>
+                <dd id="settings-client">—</dd>
+              </div>
+              <div class="facts__row">
+                <dt data-i18n="settings.mode"></dt>
+                <dd id="settings-mode">—</dd>
+              </div>
+              <div class="facts__row">
+                <dt data-i18n="settings.host"></dt>
+                <dd id="settings-host">—</dd>
+              </div>
+              <div class="facts__row">
+                <dt data-i18n="settings.devices"></dt>
+                <dd id="settings-devices">—</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="card">
+            <h2 class="card__title" data-i18n="settings.security"></h2>
+            <p class="note" data-i18n="settings.securityNote"></p>
+          </div>
+
+          <button id="sign-out" class="button button--danger" type="button">
+            <span data-i18n="settings.signOut"></span>
+          </button>
+
+          <p class="version">HomeFlow <span id="app-version">0.1.0</span></p>
+        </section>
+      </main>
+
+      <nav class="tabbar" aria-label="Navigation">
+        <button class="tab" type="button" data-view="home">
+          <svg class="tab__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"
+              fill="none"
+              stroke-width="1.7"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="tab__label" data-i18n="tab.home"></span>
+        </button>
+        <button class="tab" type="button" data-view="activity">
+          <svg class="tab__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M3 12h4l2.5-6 4 13L16 12h5"
+              fill="none"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="tab__label" data-i18n="tab.activity"></span>
+        </button>
+        <button class="tab" type="button" data-view="settings">
+          <svg class="tab__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2" fill="none" stroke-width="1.7" />
+            <path
+              d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3m13.4-6.4-1.6 1.6M9.2 14.8l-1.6 1.6m10.8 0-1.6-1.6M9.2 9.2 7.6 7.6"
+              fill="none"
+              stroke-width="1.7"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span class="tab__label" data-i18n="tab.settings"></span>
+        </button>
+      </nav>
+    </div>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

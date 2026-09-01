@@ -7,14 +7,14 @@ from uuid import uuid4
 
 import pytest
 
-from conftest import run
+from conftest import make_settings, run
 from homeflow.audit.log import InMemoryAuditLog
 from homeflow.auth.models import Principal
 from homeflow.capabilities import Capability
 from homeflow.clock import SystemClock
 from homeflow.commands.models import Action, CommandStatus, RiskClass
 from homeflow.commands.service import CommandService
-from homeflow.config.settings import Environment, Settings
+from homeflow.config.settings import Environment
 from homeflow.devices.models import Availability, Device
 from homeflow.devices.registry import DeviceRegistry
 from homeflow.devices.service import DeviceService
@@ -43,7 +43,7 @@ class Harness:
 
 
 async def _harness(provider: FakeProvider, **overrides: object) -> Harness:
-    settings = Settings(
+    settings = make_settings(
         env=Environment.TEST,
         demo_mode=True,
         command_timeout_seconds=0.2,

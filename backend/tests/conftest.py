@@ -1,12 +1,13 @@
 """Shared test fixtures.
 
 Tests never reach the household: only the synthetic demo provider and explicit
-doubles are wired in (CLAUDE.md section 49).
+doubles are wired in (see docs/security/privacy-model.md).
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from collections.abc import Coroutine, Iterator
 from pathlib import Path
@@ -25,6 +26,23 @@ sys.path.insert(0, str(Path(__file__).parent))
 DEV_TOKEN = "test-token-0123456789abcdef"
 
 
+@pytest.fixture(autouse=True)
+def isolate_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep a developer's local configuration out of the test run.
+
+    Without this, an exported HOMEFLOW_* variable or the untracked .env would
+    silently change what the fail-closed configuration tests actually assert.
+    """
+    for name in list(os.environ):
+        if name.startswith("HOMEFLOW_"):
+            monkeypatch.delenv(name, raising=False)
+
+
+def make_settings(**overrides: object) -> Settings:
+    """Build settings without reading any .env file."""
+    return Settings(_env_file=None, **overrides)  # type: ignore[arg-type]
+
+
 def run[T](coro: Coroutine[Any, Any, T]) -> T:
     """Execute a coroutine in a fresh event loop."""
     return asyncio.run(coro)
@@ -32,7 +50,7 @@ def run[T](coro: Coroutine[Any, Any, T]) -> T:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(
+    return make_settings(
         env=Environment.TEST,
         demo_mode=True,
         dev_client_token=SecretStr(DEV_TOKEN),

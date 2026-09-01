@@ -1,6 +1,6 @@
 """Derivation of public HomeFlow identifiers from provider identifiers.
 
-CLAUDE.md section 18 forbids exposing provider entity ids. A plain hash would be
+The privacy model forbids exposing provider entity ids. A plain hash would be
 brute-forceable because provider ids are low entropy, so the mapping is keyed
 with a deployment secret. The result is stable across restarts without needing a
 database, and cannot be reversed by a reader of the public repository.

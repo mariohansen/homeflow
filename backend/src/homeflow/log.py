@@ -1,6 +1,6 @@
 """Structured, redaction-aware logging.
 
-CLAUDE.md section 44 forbids household identifiers, credentials and raw provider
+The privacy model forbids household identifiers, credentials and raw provider
 payloads from reaching logs. Redaction is applied centrally here so that no call
 site can accidentally leak a value, and it is covered by unit tests.
 """
@@ -124,7 +124,7 @@ def redact(value: Any) -> Any:
 
 
 class JsonFormatter(logging.Formatter):
-    """Emit one JSON object per record with the fields allowed by CLAUDE.md 44."""
+    """Emit one JSON object per record, carrying only permitted fields."""
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {

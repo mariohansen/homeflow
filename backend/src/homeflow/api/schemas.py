@@ -2,7 +2,7 @@
 
 Response models are built explicitly from domain objects. Nothing here accepts a
 ``ProviderDeviceRef``, so a provider identifier cannot reach a client even if a
-future domain object starts carrying one (CLAUDE.md section 18).
+future domain object starts carrying one (see docs/security/privacy-model.md).
 """
 
 from __future__ import annotations
@@ -170,6 +170,11 @@ class MeResponse(ApiModel):
             display_name=principal.display_name,
             demo_mode=demo_mode,
         )
+
+
+class WebSocketTicketResponse(ApiModel):
+    ticket: str
+    expires_in_seconds: int
 
 
 class ActivityEntryResponse(ApiModel):

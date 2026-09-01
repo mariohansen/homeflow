@@ -72,6 +72,12 @@ with no verified range refuses setpoints instead of guessing.
 back once and reports `SUCCEEDED` or `UNKNOWN`. It never repeats a physical
 write automatically.
 
+**WebSocket credentials are short-lived.** A browser cannot set an
+`Authorization` header on a WebSocket handshake, and a credential in a URL would
+end up in logs. The client therefore exchanges its credential over the
+authenticated HTTP API for a ticket that is single-use, expires in 30 seconds,
+is stored hashed and is compared in constant time.
+
 **No provider passthrough.** There is no endpoint that forwards a raw request to
 Home Assistant, Nuki or a device. Only semantic HomeFlow actions exist, so the
 API cannot be used as a proxy into the home network.
@@ -104,8 +110,8 @@ Tracked openly rather than implied to be solved:
 
 - **Client registration is not implemented.** Phase 1 authenticates a single
   development credential from the environment. Production has no registered
-  clients and therefore rejects every request until the registration flow of
-  ADR 0010's successor exists.
+  clients and therefore rejects every request until a client registration flow
+  exists.
 - **No fresh action authorisation.** `HIGH`-risk actions are refused rather than
   challenged. Nuki integration is blocked on this by design.
 - **Audit is in memory.** Audit entries do not survive a restart until the
@@ -114,3 +120,8 @@ Tracked openly rather than implied to be solved:
   terminated by the private overlay (for example Tailscale Serve).
 - **No network segmentation yet.** IoT devices share the LAN; documented in the
   threat model rather than papered over.
+- **The client credential lives in browser storage.** A downgrade from a
+  platform keystore, accepted in [ADR 0011](docs/adr/0011-installable-web-client.md)
+  and mitigated by a strict Content Security Policy with no inline or
+  third-party code, same-origin only, and no `eval`. An XSS in the client would
+  expose the credential, which is why no third-party script is permitted.

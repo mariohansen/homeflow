@@ -1,6 +1,6 @@
 # Public CI. It runs against synthetic fixtures only and has no access to the
-# household, to Tailscale, or to any vendor credential (CLAUDE.md sections 57
-# and 58). Never add a self-hosted runner to this workflow.
+# household, to Tailscale, or to any vendor credential; see
+# docs/security/threat-model.md. Never add a self-hosted runner here.
 name: CI
 
 on:

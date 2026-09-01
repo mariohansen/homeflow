@@ -1,4 +1,4 @@
-"""Synthetic provider for Demo Mode (CLAUDE.md section 51).
+"""Synthetic provider for Demo Mode (see docs/security/privacy-model.md).
 
 Everything here is fictional. The module performs no I/O of any kind and imports
 no other adapter, so a demo build cannot reach a real household device — which
@@ -50,7 +50,7 @@ from homeflow.integrations.base.models import (
 PROVIDER_NAME = "demo"
 
 #: Demo pool limits. Real Bestway bounds must come from a verified controller
-#: before any write is enabled (CLAUDE.md section 16.2).
+#: before any write is enabled (see docs/adr/0006-bestway-direct-local-adapter.md).
 POOL_MIN_C = 20.0
 POOL_MAX_C = 40.0
 POOL_STEP_C = 0.5
@@ -278,7 +278,7 @@ def _apply(state: DeviceState, command: ProviderCommand) -> DeviceState:
             return state.model_copy(update=update)
         case Action.SET_FILTER if isinstance(params, OnOffParams):
             # Switching the pump off also stops heating; the hardware interlock
-            # is mirrored rather than bypassed (CLAUDE.md section 16.3).
+            # is mirrored rather than bypassed (see docs/adr/0006-bestway-direct-local-adapter.md).
             update = {"filter_pump": params.on}
             if not params.on:
                 update["heater"] = False
