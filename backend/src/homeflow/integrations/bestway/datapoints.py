@@ -213,7 +213,43 @@ CANDIDATE_PROFILE = DatapointProfile(
     target_temperature_step_c=1.0,
 )
 
-_BUILTIN: Mapping[str, DatapointProfile] = {CANDIDATE_PROFILE.name: CANDIDATE_PROFILE}
+#: Layout of a controller that reports a nineteen byte status block, worked out
+#: by pressing one button at a time on the physical panel and watching which bit
+#: moved. Turning the heater on set two bits at once, and turning it off cleared
+#: only one, which is what separates the heater from the filter pump it drives.
+#:
+#: Still ``trusted: false``: it was derived on one controller, and every
+#: deployment confirms it against its own panel before anything is exposed.
+#:
+#: Two limitations are deliberate rather than forgotten:
+#:  * the temperature unit flag was not identified, so values are read as
+#:    Celsius. A controller switched to Fahrenheit would report wrongly.
+#:  * bits 0 and 6 were set throughout and remain unexplained.
+AIRJET_19BYTE_PROFILE = DatapointProfile(
+    name="airjet-19byte",
+    provenance="observed against a physical controller, one button at a time",
+    minimum_payload_length=19,
+    locations={
+        # Byte 0 is the message type and flips between request and report, so
+        # it carries no device state.
+        Datapoint.TARGET_TEMPERATURE: ByteLocation(offset=2),
+        Datapoint.CURRENT_TEMPERATURE: ByteLocation(offset=15),
+        Datapoint.HEATER: BitLocation(offset=1, bit=1),
+        Datapoint.FILTER_PUMP: BitLocation(offset=1, bit=2),
+        Datapoint.BUBBLES: BitLocation(offset=1, bit=3),
+        Datapoint.CONTROL_PANEL_LOCK: BitLocation(offset=1, bit=4),
+    },
+    # The panel's own limits still have to be read off the device before a
+    # setpoint is ever written; these are the documented AirJet range.
+    target_temperature_min_c=20.0,
+    target_temperature_max_c=40.0,
+    target_temperature_step_c=1.0,
+)
+
+_BUILTIN: Mapping[str, DatapointProfile] = {
+    CANDIDATE_PROFILE.name: CANDIDATE_PROFILE,
+    AIRJET_19BYTE_PROFILE.name: AIRJET_19BYTE_PROFILE,
+}
 
 
 def builtin_profile(name: str) -> DatapointProfile:

@@ -39,13 +39,46 @@ Two further properties hold regardless of configuration:
 
 | Part | Status |
 | --- | --- |
-| Frame layout (magic, varint length, flag, command, payload) | From community documentation, exercised against the simulator |
-| Command numbers | From community documentation, **not confirmed against hardware** |
-| Datapoint offsets in the status block | **A starting guess. This is what you verify.** |
-| Temperature range 20–40 °C | A placeholder until your controller's real range is known |
+| Frame layout (magic, varint length, flag, command, payload) | From the published protocol description, confirmed against a physical controller |
+| Command numbers, passcode and login handshake | Confirmed against a physical controller |
+| Datapoint offsets in the status block | Product specific. **This is what you verify.** |
+| Temperature range 20–40 °C | A placeholder until your controller's real range is read off the panel |
 
-The shipped layout is called `airjet-candidate` and ships with `trusted: false`.
-It is a starting point for verification, not a fact.
+## Choosing a layout
+
+Two layouts ship, and **both are `trusted: false`**. A layout is a claim about
+your hardware, so every deployment confirms it against its own panel.
+
+| Layout | Status block | Origin |
+| --- | --- | --- |
+| `airjet-candidate` | 12 bytes | Community documentation, unconfirmed |
+| `airjet-19byte` | 19 bytes | Worked out on a physical controller, one button at a time |
+
+Run the probe first and look at the reported length — that tells you which one
+to start from. If neither fits, work out your own with watch mode.
+
+### What `airjet-19byte` maps
+
+| Where | Meaning |
+| --- | --- |
+| byte 0 | Message type, flips between request and report. **Not device state.** |
+| byte 1, bit 1 | Heater |
+| byte 1, bit 2 | Filter pump |
+| byte 1, bit 3 | Bubbles |
+| byte 1, bit 4 | Control panel lock |
+| byte 2 | Target temperature |
+| byte 15 | Current temperature |
+
+The heater and the pump are separate bits, which matters: switching the heater
+on sets both, switching it off clears only the heater bit while the pump keeps
+running. A layout that conflated them would report a running pump as stopped.
+
+Two things are deliberately not mapped:
+
+- **The temperature unit flag was not identified.** Values are read as Celsius.
+  A controller switched to Fahrenheit would report wrongly, so confirm the unit
+  on your panel and leave it there.
+- **Bits 0 and 6 of byte 1 were set throughout** and remain unexplained.
 
 ## Verifying your controller
 
@@ -154,11 +187,15 @@ python scripts/bestway_probe.py --host 192.0.2.10 --profile-path /etc/homeflow/a
 ### 6. Turn on reading
 
 ```dotenv
+HOMEFLOW_DEMO_MODE=false
 HOMEFLOW_BESTWAY_ENABLED=true
 HOMEFLOW_BESTWAY_HOST=192.0.2.10
-HOMEFLOW_BESTWAY_PROFILE_PATH=/etc/homeflow/airjet.json
+HOMEFLOW_BESTWAY_PROFILE=airjet-19byte
 HOMEFLOW_BESTWAY_TRUST_PROFILE=true
 ```
+
+Use `HOMEFLOW_BESTWAY_PROFILE_PATH` instead when you wrote your own layout file.
+Demo mode has to be off: a demo build must not be able to reach real hardware.
 
 The pool now appears in the app: water temperature, target, and the state of
 heater, filter and bubbles. Still no control — nothing is writable yet.
@@ -168,6 +205,11 @@ heats and the filter cycles. A layout that is right in one state can still be
 wrong in another.
 
 ## Releasing control, one capability at a time
+
+**First read the panel's own temperature limits.** Hold the down button until
+it stops, then the up button, and put those numbers into your layout. The
+shipped range is a placeholder, and a setpoint is the one control where a wrong
+bound matters.
 
 Release the least consequential capability first, and only after the previous
 one has been observed working.

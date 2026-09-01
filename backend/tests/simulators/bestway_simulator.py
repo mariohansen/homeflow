@@ -49,6 +49,35 @@ def initial_payload(
     return bytes([0x01, 0x00, 0x00, 0x00, flags, target_c, current_c, 0, 0, 0, 0, 0])
 
 
+def airjet19_payload(
+    *,
+    current_c: int = 24,
+    target_c: int = 38,
+    heater: bool = False,
+    filter_pump: bool = False,
+    bubbles: bool = False,
+    panel_lock: bool = False,
+) -> bytes:
+    """A status block shaped like the airjet-19byte layout.
+
+    Synthetic values only. Byte 0 is the message type, byte 1 the flags, and
+    the bytes this layout does not name are left at zero.
+    """
+    flags = (
+        0b0100_0001  # bits 0 and 6 were set throughout the observation
+        | (heater << 1)
+        | (filter_pump << 2)
+        | (bubbles << 3)
+        | (panel_lock << 4)
+    )
+    block = bytearray(19)
+    block[0] = 0x03
+    block[1] = flags
+    block[2] = target_c
+    block[15] = current_c
+    return bytes(block)
+
+
 @dataclass(slots=True)
 class BestwaySimulator:
     """Serves one synthetic controller.
@@ -152,9 +181,16 @@ async def _main() -> None:  # pragma: no cover - manual tool
     parser = argparse.ArgumentParser(description="Run a synthetic AirJet controller.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=12416)
+    parser.add_argument(
+        "--layout",
+        choices=("candidate", "airjet19"),
+        default="candidate",
+        help="which status block shape to serve",
+    )
     args = parser.parse_args()
 
-    simulator = BestwaySimulator()
+    block = airjet19_payload() if args.layout == "airjet19" else initial_payload()
+    simulator = BestwaySimulator(payload=bytearray(block))
     await simulator.start(args.host, args.port)
     print(f"synthetic AirJet controller listening on {args.host}:{simulator.port}")
     try:

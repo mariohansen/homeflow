@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from homeflow.integrations.bestway.datapoints import (
+    AIRJET_19BYTE_PROFILE,
     CANDIDATE_PROFILE,
     BitLocation,
     ByteLocation,
@@ -20,6 +21,7 @@ from homeflow.integrations.bestway.datapoints import (
     load_profile,
     to_celsius,
 )
+from simulators.bestway_simulator import airjet19_payload
 
 # flags at 4, target at 5, current at 6
 PAYLOAD = bytes([0x01, 0x00, 0x00, 0x00, 0b00000110, 38, 27, 0, 0, 0, 0, 0])
@@ -170,3 +172,60 @@ def test_an_unknown_builtin_layout_is_reported() -> None:
     assert builtin_profile("airjet-candidate") is CANDIDATE_PROFILE
     with pytest.raises(ProfileError, match="no built-in"):
         builtin_profile("nope")
+
+
+# --- the layout observed on a physical controller -------------------------
+
+
+def test_the_observed_layout_reads_a_nineteen_byte_block() -> None:
+    payload = airjet19_payload(current_c=27, target_c=36, filter_pump=True)
+    decoded = AIRJET_19BYTE_PROFILE.decode(payload)
+
+    assert decoded[Datapoint.CURRENT_TEMPERATURE] == 27
+    assert decoded[Datapoint.TARGET_TEMPERATURE] == 36
+    assert decoded[Datapoint.FILTER_PUMP] is True
+    assert decoded[Datapoint.HEATER] is False
+    assert decoded[Datapoint.BUBBLES] is False
+    assert decoded[Datapoint.CONTROL_PANEL_LOCK] is False
+
+
+def test_the_heater_and_the_pump_are_separate_bits() -> None:
+    """The observation that settled the layout: the heater drives the pump.
+
+    Turning the heater on sets two bits; turning it off clears only one. A
+    layout that conflated them would report the pump as off while it runs.
+    """
+    both = AIRJET_19BYTE_PROFILE.decode(airjet19_payload(heater=True, filter_pump=True))
+    assert both[Datapoint.HEATER] is True
+    assert both[Datapoint.FILTER_PUMP] is True
+
+    pump_only = AIRJET_19BYTE_PROFILE.decode(airjet19_payload(heater=False, filter_pump=True))
+    assert pump_only[Datapoint.HEATER] is False
+    assert pump_only[Datapoint.FILTER_PUMP] is True
+
+
+def test_the_observed_layout_still_refuses_to_write() -> None:
+    with pytest.raises(ProfileError, match="not verified"):
+        AIRJET_19BYTE_PROFILE.encode_write(Datapoint.HEATER, True, base_payload=airjet19_payload())
+
+
+def test_a_write_in_the_observed_layout_touches_one_bit() -> None:
+    released = DatapointProfile.model_validate(
+        AIRJET_19BYTE_PROFILE.model_dump()
+        | {"trusted": True, "writable": frozenset({Datapoint.BUBBLES})}
+    )
+    base = airjet19_payload(current_c=27, target_c=36, filter_pump=True)
+    written = released.encode_write(Datapoint.BUBBLES, True, base_payload=base)
+
+    differing = [i for i, (a, b) in enumerate(zip(base, written, strict=True)) if a != b]
+    assert differing == [1]
+    after = released.decode(written)
+    assert after[Datapoint.BUBBLES] is True
+    assert after[Datapoint.FILTER_PUMP] is True
+    assert after[Datapoint.CURRENT_TEMPERATURE] == 27
+
+
+def test_the_message_type_byte_is_not_treated_as_state() -> None:
+    """Byte 0 flips between request and report; it must not be a datapoint."""
+    offsets = {location.offset for location in AIRJET_19BYTE_PROFILE.locations.values()}
+    assert 0 not in offsets

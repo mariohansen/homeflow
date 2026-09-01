@@ -6,6 +6,7 @@ controller, then one write capability at a time. See docs/integrations/bestway.m
 
 from homeflow.integrations.bestway.client import BestwayClient, ControllerMisbehaved
 from homeflow.integrations.bestway.datapoints import (
+    AIRJET_19BYTE_PROFILE,
     CANDIDATE_PROFILE,
     Datapoint,
     DatapointProfile,
@@ -20,6 +21,7 @@ from homeflow.integrations.bestway.provider import (
 )
 
 __all__ = [
+    "AIRJET_19BYTE_PROFILE",
     "CANDIDATE_PROFILE",
     "PROVIDER_NAME",
     "BestwayClient",
