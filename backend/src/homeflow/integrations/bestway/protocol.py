@@ -61,6 +61,35 @@ class ProtocolError(Exception):
     """The peer sent something this implementation refuses to interpret."""
 
 
+#: ``0x0090`` carries a sub-action; ``0x02`` asks the controller for its status.
+STATUS_READ_PAYLOAD: Final = b"\x02"
+
+#: Length of the passcode the controller hands out.
+PASSCODE_LENGTH: Final = 10
+
+
+def encode_length_prefixed(data: bytes) -> bytes:
+    """Prefix a field with its length, big endian, as the protocol expects."""
+    if len(data) > 0xFFFF:
+        raise ProtocolError("field is too long to length-prefix")
+    return len(data).to_bytes(2, "big") + data
+
+
+def decode_length_prefixed(payload: bytes) -> bytes:
+    """Read one length-prefixed field, tolerating a payload that omits the prefix."""
+    if len(payload) < 2:
+        raise ProtocolError("length-prefixed field is truncated")
+    declared = int.from_bytes(payload[:2], "big")
+    body = payload[2:]
+    if declared != len(body):
+        # Some firmware answers without the prefix. Taking the payload as-is is
+        # better than refusing, and it stays bounded either way.
+        if len(payload) > MAX_PAYLOAD_BYTES:
+            raise ProtocolError("length-prefixed field exceeds the permitted maximum")
+        return payload
+    return body
+
+
 class IncompleteFrame(ProtocolError):
     """More bytes are needed before a frame can be decoded."""
 

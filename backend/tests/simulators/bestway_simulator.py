@@ -19,9 +19,16 @@ import asyncio
 import contextlib
 from dataclasses import dataclass, field
 
-from homeflow.integrations.bestway.protocol import Command, Frame, FrameReader
+from homeflow.integrations.bestway.protocol import (
+    Command,
+    Frame,
+    FrameReader,
+    decode_length_prefixed,
+    encode_length_prefixed,
+)
 
-PASSCODE = b"simulated-passcode"
+#: Ten bytes, as the protocol specifies. Synthetic.
+PASSCODE = b"simcode123"
 
 
 #: A status block laid out for the candidate profile: flags at offset 4,
@@ -112,9 +119,15 @@ class BestwaySimulator:
     def _handle(self, frame: Frame) -> list[Frame]:
         match frame.command:
             case Command.PASSCODE_REQUEST:
-                return [Frame(command=Command.PASSCODE_RESPONSE, payload=PASSCODE)]
+                return [
+                    Frame(
+                        command=Command.PASSCODE_RESPONSE,
+                        payload=encode_length_prefixed(PASSCODE),
+                    )
+                ]
             case Command.LOGIN_REQUEST:
-                self._logged_in = frame.payload == PASSCODE or not self.require_login
+                presented = decode_length_prefixed(frame.payload)
+                self._logged_in = presented == PASSCODE or not self.require_login
                 return [Frame(command=Command.LOGIN_RESPONSE, payload=b"\x00")]
             case Command.HEARTBEAT_REQUEST:
                 return [Frame(command=Command.HEARTBEAT_RESPONSE)]

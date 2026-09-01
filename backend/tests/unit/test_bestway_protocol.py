@@ -7,13 +7,16 @@ import pytest
 from homeflow.integrations.bestway.protocol import (
     MAGIC,
     MAX_PAYLOAD_BYTES,
+    STATUS_READ_PAYLOAD,
     Command,
     Frame,
     FrameReader,
     IncompleteFrame,
     ProtocolError,
     decode_frame,
+    decode_length_prefixed,
     decode_varint,
+    encode_length_prefixed,
     encode_varint,
 )
 
@@ -106,3 +109,49 @@ def test_reader_rejects_a_stream_that_cannot_be_framed() -> None:
     reader = FrameReader()
     with pytest.raises(ProtocolError, match="magic"):
         reader.feed(b"\xde\xad\xbe\xef\x01\x02")
+
+
+# Byte sequences taken from the published description of the protocol. They are
+# the reference this implementation is measured against, so a change in framing
+# has to be a deliberate one.
+DOCUMENTED_FRAMES = [
+    ("passcode request", Frame(command=Command.PASSCODE_REQUEST), "00000003030000 06"),
+    ("heartbeat", Frame(command=Command.HEARTBEAT_REQUEST), "00000003030000 15"),
+    (
+        "status read",
+        Frame(command=Command.STATUS_REQUEST, payload=STATUS_READ_PAYLOAD),
+        "00000003040000 9002",
+    ),
+    (
+        "login",
+        Frame(command=Command.LOGIN_REQUEST, payload=encode_length_prefixed(b"0123456789")),
+        "000000030f0000 08000a30313233343536373839",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "frame", "expected"),
+    DOCUMENTED_FRAMES,
+    ids=[entry[0] for entry in DOCUMENTED_FRAMES],
+)
+def test_frames_match_the_documented_byte_sequences(
+    name: str,
+    frame: Frame,
+    expected: str,
+) -> None:
+    assert frame.encode().hex() == expected.replace(" ", "")
+
+
+def test_a_length_prefixed_field_round_trips() -> None:
+    assert decode_length_prefixed(encode_length_prefixed(b"0123456789")) == b"0123456789"
+
+
+def test_a_field_without_the_prefix_is_taken_as_it_is() -> None:
+    """Some firmware answers without the prefix; refusing would be worse."""
+    assert decode_length_prefixed(b"\xff\xfeabc") == b"\xff\xfeabc"
+
+
+def test_a_truncated_length_prefixed_field_is_refused() -> None:
+    with pytest.raises(ProtocolError, match="truncated"):
+        decode_length_prefixed(b"\x01")

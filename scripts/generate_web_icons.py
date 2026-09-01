@@ -45,9 +45,7 @@ def _lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * t
 
 
-def _distance_to_segment(
-    px: float, py: float, ax: float, ay: float, bx: float, by: float
-) -> float:
+def _distance_to_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
     dx, dy = bx - ax, by - ay
     length_squared = dx * dx + dy * dy
     if length_squared == 0.0:
@@ -66,7 +64,9 @@ def _wave_distance(px: float, py: float, baseline: float, amplitude: float) -> f
         end = WAVE_START if px < WAVE_START else WAVE_END
         return math.hypot(px - end, py - _wave_y(end, baseline, amplitude))
     slope = (
-        amplitude * (2.0 * math.pi / WAVE_LENGTH) * math.cos(2.0 * math.pi * (px - WAVE_START) / WAVE_LENGTH)
+        amplitude
+        * (2.0 * math.pi / WAVE_LENGTH)
+        * math.cos(2.0 * math.pi * (px - WAVE_START) / WAVE_LENGTH)
     )
     return abs(py - _wave_y(px, baseline, amplitude)) / math.hypot(1.0, slope)
 
@@ -78,13 +78,16 @@ def _render(size: int) -> bytes:
     # Background gradient, one flat colour per row.
     for y in range(hi):
         t = y / (hi - 1)
-        row = bytes(
-            (
-                round(_lerp(GRADIENT_TOP[0], GRADIENT_BOTTOM[0], t)),
-                round(_lerp(GRADIENT_TOP[1], GRADIENT_BOTTOM[1], t)),
-                round(_lerp(GRADIENT_TOP[2], GRADIENT_BOTTOM[2], t)),
+        row = (
+            bytes(
+                (
+                    round(_lerp(GRADIENT_TOP[0], GRADIENT_BOTTOM[0], t)),
+                    round(_lerp(GRADIENT_TOP[1], GRADIENT_BOTTOM[1], t)),
+                    round(_lerp(GRADIENT_TOP[2], GRADIENT_BOTTOM[2], t)),
+                )
             )
-        ) * hi
+            * hi
+        )
         pixels[y * hi * 3 : (y + 1) * hi * 3] = row
 
     # Map design units onto the inset content box.
@@ -115,9 +118,7 @@ def _render(size: int) -> bytes:
                 else:
                     for channel in range(3):
                         current = pixels[index + channel]
-                        pixels[index + channel] = round(
-                            _lerp(current, INK[channel], opacity)
-                        )
+                        pixels[index + channel] = round(_lerp(current, INK[channel], opacity))
 
     def roof_distance(x: float, y: float) -> float:
         return min(

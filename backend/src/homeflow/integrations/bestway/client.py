@@ -18,10 +18,13 @@ from typing import Self
 
 from homeflow.integrations.base.errors import ProviderUnavailableError
 from homeflow.integrations.bestway.protocol import (
+    STATUS_READ_PAYLOAD,
     Command,
     Frame,
     FrameReader,
     ProtocolError,
+    decode_length_prefixed,
+    encode_length_prefixed,
 )
 from homeflow.log import get_logger
 
@@ -98,13 +101,18 @@ class BestwayClient:
         self._reader = FrameReader()
         self._pending.clear()
         try:
-            passcode = await self._exchange(
+            answer = await self._exchange(
                 Frame(command=Command.PASSCODE_REQUEST),
                 expect=Command.PASSCODE_RESPONSE,
             )
-            self._passcode = passcode
+            # The passcode travels as a length-prefixed field, and it goes back
+            # the same way.
+            self._passcode = decode_length_prefixed(answer)
             await self._exchange(
-                Frame(command=Command.LOGIN_REQUEST, payload=passcode),
+                Frame(
+                    command=Command.LOGIN_REQUEST,
+                    payload=encode_length_prefixed(self._passcode),
+                ),
                 expect=Command.LOGIN_RESPONSE,
             )
         except Exception:
@@ -128,7 +136,7 @@ class BestwayClient:
     async def read_status(self) -> bytes:
         """Ask for the current status block and return its raw payload."""
         return await self._exchange(
-            Frame(command=Command.STATUS_REQUEST),
+            Frame(command=Command.STATUS_REQUEST, payload=STATUS_READ_PAYLOAD),
             expect=(Command.STATUS_RESPONSE, Command.STATUS_REPORT),
         )
 
