@@ -53,6 +53,11 @@ const de = {
   "device.pause": "Pause",
   "device.observed": "Stand: {time}",
 
+  "state.on": "An",
+  "state.off": "Aus",
+  "device.readOnly":
+    "Nur Anzeige. Die Steuerung wird erst freigegeben, wenn sie am Ger\u00e4t gepr\u00fcft wurde.",
+
   "pool.current": "Wassertemperatur",
   "pool.target": "Ziel {value} °C",
   "pool.targetLabel": "Zieltemperatur",

@@ -68,6 +68,18 @@ function toggleRow(label, { checked, disabled, onToggle }) {
   return el("div", { class: "control" }, [el("span", { class: "control__label", text: label }), button]);
 }
 
+function statusRow(label, value) {
+  // A value the gateway reports but the client may not change yet.
+  return el("div", { class: "control" }, [
+    el("span", { class: "control__label", text: label }),
+    el("span", {
+      class: "control__value",
+      text: value ? t("state.on") : t("state.off"),
+    }),
+  ]);
+}
+
+
 function sliderRow(label, { value, min, max, step, unit, disabled, format, onCommit, onDrag }) {
   const readout = el("span", {
     class: "control__value",
@@ -156,18 +168,30 @@ function poolBody(device, ctx) {
     ["BUBBLES", "pool.bubbles", "SET_BUBBLES", state.bubbles],
     ["CONTROL_PANEL_LOCK", "pool.panelLock", "SET_CONTROL_PANEL_LOCK", state.controlPanelLock],
   ];
+  let readOnlyRows = 0;
   for (const [capability, labelKey, action, value] of switches) {
-    if (!has(device, capability) || value === null || value === undefined) continue;
-    controls.push(
-      toggleRow(t(labelKey), {
-        checked: value,
-        disabled,
-        onToggle: (on) => ctx.execute(device, action, { on }),
-      }),
-    );
+    if (value === null || value === undefined) continue;
+    if (has(device, capability)) {
+      controls.push(
+        toggleRow(t(labelKey), {
+          checked: value,
+          disabled,
+          onToggle: (on) => ctx.execute(device, action, { on }),
+        }),
+      );
+    } else {
+      // The gateway knows this value; it just has not released the control.
+      // Hiding what is known would be a different kind of dishonesty than
+      // offering a control that is not proven.
+      readOnlyRows += 1;
+      controls.push(statusRow(t(labelKey), value));
+    }
   }
 
   if (controls.length) parts.push(el("div", { class: "controls" }, controls));
+  if (readOnlyRows > 0) {
+    parts.push(el("p", { class: "device__message", text: t("device.readOnly") }));
+  }
   return parts;
 }
 
