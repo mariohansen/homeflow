@@ -100,6 +100,12 @@ uvx pre-commit install
 This adds local formatting, large-file and secret scanning. CI runs the same
 checks; the hooks are convenience, not the security boundary.
 
+## Running it for real
+
+This runbook covers development on your own machine. Putting the gateway
+somewhere it stays available, and reaching it from a phone, is
+[remote-access.md](remote-access.md).
+
 ## Common problems
 
 **Every request returns 401.** `HOMEFLOW_DEV_CLIENT_TOKEN` is unset or the

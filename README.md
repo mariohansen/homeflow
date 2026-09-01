@@ -228,6 +228,9 @@ curl -H "Authorization: Bearer $HOMEFLOW_DEV_CLIENT_TOKEN" \
      http://127.0.0.1:8000/v1/devices
 ```
 
+For an always-on deployment and phone access over a private overlay, see
+[docs/runbooks/remote-access.md](docs/runbooks/remote-access.md).
+
 Quality gates:
 
 ```bash
