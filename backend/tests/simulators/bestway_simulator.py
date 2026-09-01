@@ -23,6 +23,7 @@ from homeflow.integrations.bestway.protocol import (
     Command,
     Frame,
     FrameReader,
+    P0Action,
     decode_length_prefixed,
     encode_length_prefixed,
 )
@@ -94,6 +95,8 @@ class BestwaySimulator:
     corrupt_next_response: bool = False
     #: Hang up after answering, as controllers in the field do.
     close_after_response: bool = False
+    #: Where the attribute value block sits inside the status payload.
+    control_values_offset: int = 1
 
     _server: asyncio.Server | None = field(default=None, init=False)
     _connections: set[asyncio.StreamWriter] = field(default_factory=set, init=False)
@@ -149,6 +152,34 @@ class BestwaySimulator:
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
 
+    def _apply_control(self, body: bytes) -> None:
+        """Apply exactly the attributes the request flagged.
+
+        Ignoring the flags would make the simulator more forgiving than a real
+        controller, which is the opposite of useful.
+        """
+        if not self.honour_writes or len(body) < 8:
+            return
+        action, flags = body[4], int.from_bytes(body[5:7], "big")
+        values = body[7:]
+        if action != P0Action.CONTROL or not values:
+            return
+
+        target = self.control_values_offset
+        for bit in range(7):
+            if not flags >> bit & 1:
+                continue
+            mask = 1 << bit
+            if values[0] & mask:
+                self.payload[target] |= mask
+            else:
+                self.payload[target] &= 0xFF ^ mask
+
+        # This simulator puts the setpoint behind flag bit 7, one byte after
+        # the flag byte. A real controller defines its own mapping.
+        if flags >> 7 & 1 and len(values) > 1:
+            self.payload[target + 1] = values[1]
+
     def _handle(self, frame: Frame) -> list[Frame]:
         match frame.command:
             case Command.PASSCODE_REQUEST:
@@ -168,11 +199,11 @@ class BestwaySimulator:
                 if self.require_login and not self._logged_in:
                     return []
                 return [Frame(command=Command.STATUS_RESPONSE, payload=bytes(self.payload))]
-            case Command.WRITE_ATTRIBUTE:
+            case Command.CONTROL_REQUEST:
                 self.write_count += 1
-                if self.honour_writes:
-                    self.payload = bytearray(frame.payload)
-                return [Frame(command=Command.STATUS_REPORT, payload=bytes(self.payload))]
+                self._apply_control(frame.payload)
+                # The response echoes the sequence number it was given.
+                return [Frame(command=Command.CONTROL_RESPONSE, payload=frame.payload[:4])]
             case _:
                 return []
 

@@ -99,6 +99,16 @@ class DatapointProfile(BaseModel):
     target_temperature_max_c: float = Field(ge=0.0, le=60.0)
     target_temperature_step_c: float = Field(gt=0.0, le=5.0)
 
+    #: Where the controller's attribute value block starts inside the status
+    #: payload, and how long it is. Writing echoes that block back with one
+    #: field changed, so it has to be locatable.
+    control_values_offset: int | None = None
+    control_values_length: int | None = None
+    #: Bit each datapoint occupies in the control request's attribute flags.
+    #: A separate namespace from the status layout, so it is stated rather than
+    #: derived.
+    control_flag_bits: dict[Datapoint, int] = Field(default_factory=dict)
+
     #: Set only by an operator who compared decoded values with the panel.
     trusted: bool = False
     #: Datapoints an operator has additionally verified as safe to write.
@@ -115,12 +125,19 @@ class DatapointProfile(BaseModel):
     @field_validator("writable")
     @classmethod
     def _writable_is_known(cls, value: frozenset[Datapoint], info: Any) -> frozenset[Datapoint]:
+        if Datapoint.UNIT_IS_FAHRENHEIT in value:
+            raise ValueError("the temperature unit is not a HomeFlow-writable datapoint")
         locations = info.data.get("locations") or {}
         unknown = {item for item in value if item not in locations}
         if unknown:
             raise ValueError(f"writable datapoints have no location: {sorted(unknown)}")
-        if Datapoint.UNIT_IS_FAHRENHEIT in value:
-            raise ValueError("the temperature unit is not a HomeFlow-writable datapoint")
+        flag_bits = info.data.get("control_flag_bits") or {}
+        unflagged = {item for item in value if item not in flag_bits}
+        if unflagged:
+            raise ValueError(
+                "these datapoints have no control flag bit, so the controller "
+                f"cannot be told to apply them: {sorted(unflagged)}"
+            )
         return value
 
     def may_write(self, datapoint: Datapoint) -> bool:
@@ -152,19 +169,20 @@ class DatapointProfile(BaseModel):
             raise ProfileError(f"{datapoint.value} is not part of this layout")
         return location
 
-    def encode_write(
+    def encode_control(
         self,
         datapoint: Datapoint,
         value: int | bool,
         *,
         base_payload: bytes,
-    ) -> bytes:
-        """Return a payload that changes exactly one datapoint.
+    ) -> tuple[int, bytes]:
+        """Return ``(attr_flags, attr_vals)`` for a control request.
 
-        The write is expressed as the last observed status block with a single
-        field modified, so a controller never receives a field this gateway has
-        not seen it report. The permission check lives here, at the point where
-        bytes are produced, so that no path upstream can bypass it.
+        The value block is the one the controller reported moments earlier with
+        a single field changed, so even a controller that applied more than it
+        was asked to would land on the state this gateway intended. The
+        permission check lives here, where the bytes are produced, so no path
+        upstream can bypass it.
         """
         if not self.may_write(datapoint):
             raise ProfileError(
@@ -172,23 +190,37 @@ class DatapointProfile(BaseModel):
                 "not verified against the physical controller, or this capability has "
                 "not been released yet"
             )
-        if len(base_payload) < self.minimum_payload_length:
-            raise ProfileError("no verified status block to build the write from")
+        if self.control_values_offset is None or self.control_values_length is None:
+            raise ProfileError("this layout does not say where the control values sit")
+
+        start = self.control_values_offset
+        end = start + self.control_values_length
+        if len(base_payload) < end:
+            raise ProfileError("no verified status block to build the control request from")
+
+        flag_bit = self.control_flag_bits.get(datapoint)
+        if flag_bit is None:
+            raise ProfileError(f"no control flag bit is known for {datapoint.value}")
 
         location = self.location_for(datapoint)
-        buffer = bytearray(base_payload)
+        values = bytearray(base_payload[start:end])
+        index = location.offset - start
+        if not 0 <= index < len(values):
+            raise ProfileError(f"{datapoint.value} sits outside the control value block")
+
         if isinstance(location, BitLocation):
             mask = 1 << location.bit
             if value:
-                buffer[location.offset] |= mask
+                values[index] |= mask
             else:
-                buffer[location.offset] &= 0xFF ^ mask
+                values[index] &= 0xFF ^ mask
         else:
             number = int(value)
             if not 0 <= number <= 0xFF:
                 raise ProfileError(f"{datapoint.value} value does not fit in one byte")
-            buffer[location.offset] = number
-        return bytes(buffer)
+            values[index] = number
+
+        return 1 << flag_bit, bytes(values)
 
 
 #: Layout taken from community documentation of AirJet controllers. It is a
@@ -207,6 +239,15 @@ CANDIDATE_PROFILE = DatapointProfile(
         Datapoint.BUBBLES: BitLocation(offset=4, bit=0),
         Datapoint.CONTROL_PANEL_LOCK: BitLocation(offset=4, bit=3),
         Datapoint.UNIT_IS_FAHRENHEIT: BitLocation(offset=4, bit=4),
+    },
+    control_values_offset=4,
+    control_values_length=8,
+    control_flag_bits={
+        Datapoint.BUBBLES: 0,
+        Datapoint.FILTER_PUMP: 1,
+        Datapoint.HEATER: 2,
+        Datapoint.CONTROL_PANEL_LOCK: 3,
+        Datapoint.TARGET_TEMPERATURE: 7,
     },
     target_temperature_min_c=20.0,
     target_temperature_max_c=40.0,
@@ -238,6 +279,19 @@ AIRJET_19BYTE_PROFILE = DatapointProfile(
         Datapoint.FILTER_PUMP: BitLocation(offset=1, bit=2),
         Datapoint.BUBBLES: BitLocation(offset=1, bit=3),
         Datapoint.CONTROL_PANEL_LOCK: BitLocation(offset=1, bit=4),
+    },
+    # The attribute value block the controller echoes back: the flag byte, the
+    # setpoint, then the timer fields.
+    control_values_offset=1,
+    control_values_length=14,
+    # Which bit of the control request's attribute flags names each datapoint.
+    # TARGET_TEMPERATURE is deliberately absent: its flag bit is not known, so
+    # releasing it for writing fails rather than guessing.
+    control_flag_bits={
+        Datapoint.HEATER: 1,
+        Datapoint.FILTER_PUMP: 2,
+        Datapoint.BUBBLES: 3,
+        Datapoint.CONTROL_PANEL_LOCK: 4,
     },
     # The panel's own limits still have to be read off the device before a
     # setpoint is ever written; these are the documented AirJet range.

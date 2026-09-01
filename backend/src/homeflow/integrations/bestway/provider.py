@@ -189,11 +189,13 @@ class BestwayProvider:
         value = self._value_for(command, datapoint, base_payload)
 
         try:
-            payload = self.profile.encode_write(datapoint, value, base_payload=base_payload)
+            attr_flags, attr_vals = self.profile.encode_control(
+                datapoint, value, base_payload=base_payload
+            )
         except ProfileError as exc:
             raise ProviderRejectedError(str(exc)) from exc
 
-        await self.client.write_status_payload(payload)
+        await self.client.send_control(attr_flags, attr_vals)
 
         # Read-after-write. A controller that did not take the change must not
         # be reported as if it had.

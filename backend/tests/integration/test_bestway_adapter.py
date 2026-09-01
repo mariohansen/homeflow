@@ -1,8 +1,8 @@
 """The Bestway adapter end to end against a synthetic controller.
 
 No hardware is involved. What these tests establish is that the read path
-decodes what the controller reported, and that the write path cannot fire while
-the datapoint layout is unproven or the capability unreleased.
+decodes what the controller reported, and that the control path cannot fire
+while the datapoint layout is unproven or the capability unreleased.
 """
 
 from __future__ import annotations
@@ -24,22 +24,45 @@ from homeflow.integrations.base.models import (
 )
 from homeflow.integrations.bestway.client import BestwayClient
 from homeflow.integrations.bestway.datapoints import (
+    AIRJET_19BYTE_PROFILE,
     CANDIDATE_PROFILE,
     Datapoint,
     DatapointProfile,
 )
 from homeflow.integrations.bestway.provider import BestwayProvider, airjet_ref
-from simulators.bestway_simulator import BestwaySimulator, initial_payload
+from simulators.bestway_simulator import BestwaySimulator, airjet19_payload, initial_payload
 
 
-def profile(*writable: Datapoint, trusted: bool = True) -> DatapointProfile:
+def observed(*writable: Datapoint, trusted: bool = True) -> DatapointProfile:
+    """The layout worked out against a physical controller."""
     return DatapointProfile.model_validate(
-        CANDIDATE_PROFILE.model_dump() | {"trusted": trusted, "writable": frozenset(writable)}
+        AIRJET_19BYTE_PROFILE.model_dump() | {"trusted": trusted, "writable": frozenset(writable)}
+    )
+
+
+def candidate(*writable: Datapoint) -> DatapointProfile:
+    """The unverified community layout, used where a setpoint must be exercised."""
+    return DatapointProfile.model_validate(
+        CANDIDATE_PROFILE.model_dump() | {"trusted": True, "writable": frozenset(writable)}
     )
 
 
 @contextlib.asynccontextmanager
 async def controller(**kwargs: object) -> AsyncIterator[BestwaySimulator]:
+    kwargs.setdefault("payload", bytearray(airjet19_payload()))
+    simulator = BestwaySimulator(**kwargs)  # type: ignore[arg-type]
+    await simulator.start()
+    try:
+        yield simulator
+    finally:
+        await simulator.stop()
+
+
+@contextlib.asynccontextmanager
+async def candidate_controller(**kwargs: object) -> AsyncIterator[BestwaySimulator]:
+    """A controller shaped like the twelve byte community layout."""
+    kwargs.setdefault("payload", bytearray(initial_payload()))
+    kwargs.setdefault("control_values_offset", 4)
     simulator = BestwaySimulator(**kwargs)  # type: ignore[arg-type]
     await simulator.start()
     try:
@@ -65,8 +88,8 @@ async def connected(
         await provider.aclose()
 
 
-def heater_command(*, on: bool) -> ProviderCommand:
-    return ProviderCommand(action=Action.SET_HEATER, params=OnOffParams(on=on))
+def bubbles_command(*, on: bool) -> ProviderCommand:
+    return ProviderCommand(action=Action.SET_BUBBLES, params=OnOffParams(on=on))
 
 
 # -- discovery ------------------------------------------------------------
@@ -76,7 +99,7 @@ def test_an_unproven_layout_exposes_no_device() -> None:
     """A wrong temperature must never reach a screen."""
 
     async def scenario() -> list[object]:
-        async with controller() as simulator, connected(simulator, profile(trusted=False)) as pool:
+        async with controller() as sim, connected(sim, observed(trusted=False)) as pool:
             return list(await pool.discover_devices())
 
     assert run(scenario()) == []
@@ -84,21 +107,20 @@ def test_an_unproven_layout_exposes_no_device() -> None:
 
 def test_a_proven_layout_exposes_a_read_only_pool() -> None:
     async def scenario() -> tuple[tuple[Capability, ...], float | None]:
-        async with controller() as simulator, connected(simulator, profile()) as pool:
+        async with controller() as sim, connected(sim, observed()) as pool:
             device = (await pool.discover_devices())[0]
             return device.capabilities, device.constraints.target_temperature_max_c
 
     capabilities, maximum = run(scenario())
     assert capabilities == (Capability.CURRENT_TEMPERATURE,)
-    # No control capability is advertised, so no client can render one.
     assert Capability.HEATING not in capabilities
     assert maximum == 40.0
 
 
 def test_releasing_a_datapoint_advertises_exactly_that_capability() -> None:
     async def scenario() -> tuple[Capability, ...]:
-        released = profile(Datapoint.HEATER, Datapoint.FILTER_PUMP)
-        async with controller() as simulator, connected(simulator, released) as pool:
+        released = observed(Datapoint.HEATER, Datapoint.FILTER_PUMP)
+        async with controller() as sim, connected(sim, released) as pool:
             return (await pool.discover_devices())[0].capabilities
 
     capabilities = run(scenario())
@@ -110,16 +132,19 @@ def test_releasing_a_datapoint_advertises_exactly_that_capability() -> None:
     assert Capability.BUBBLES not in capabilities
 
 
+def test_a_datapoint_without_a_control_flag_bit_cannot_be_released() -> None:
+    """The observed layout has no flag bit for the setpoint, so it stays locked."""
+    with pytest.raises(ValueError, match="no control flag bit"):
+        observed(Datapoint.TARGET_TEMPERATURE)
+
+
 # -- reading --------------------------------------------------------------
 
 
 def test_state_reflects_what_the_controller_reported() -> None:
     async def scenario() -> DeviceState:
-        payload = bytearray(initial_payload(current_c=29, target_c=37, heater=True, bubbles=True))
-        async with (
-            controller(payload=payload) as simulator,
-            connected(simulator, profile()) as pool,
-        ):
+        payload = bytearray(airjet19_payload(current_c=29, target_c=37, heater=True, bubbles=True))
+        async with controller(payload=payload) as sim, connected(sim, observed()) as pool:
             return (await pool.get_state(airjet_ref())).state
 
     state = run(scenario())
@@ -134,8 +159,8 @@ def test_a_controller_reporting_fahrenheit_is_normalised() -> None:
     async def scenario() -> float | None:
         payload = bytearray(initial_payload(current_c=100, target_c=104, fahrenheit=True))
         async with (
-            controller(payload=payload) as simulator,
-            connected(simulator, profile()) as pool,
+            candidate_controller(payload=payload) as sim,
+            connected(sim, candidate()) as pool,
         ):
             return (await pool.get_state(airjet_ref())).state.current_temperature_c
 
@@ -144,8 +169,8 @@ def test_a_controller_reporting_fahrenheit_is_normalised() -> None:
 
 def test_an_unreachable_controller_is_reported_as_unavailable() -> None:
     async def scenario() -> None:
-        async with controller() as simulator, connected(simulator, profile()) as pool:
-            await simulator.stop()
+        async with controller() as sim, connected(sim, observed()) as pool:
+            await sim.stop()
             with pytest.raises(ProviderUnavailableError):
                 await pool.get_state(airjet_ref())
 
@@ -155,8 +180,8 @@ def test_an_unreachable_controller_is_reported_as_unavailable() -> None:
 def test_a_malformed_frame_ends_the_conversation() -> None:
     async def scenario() -> None:
         async with (
-            controller(corrupt_next_response=True) as simulator,
-            connected(simulator, profile()) as pool,
+            controller(corrupt_next_response=True) as sim,
+            connected(sim, observed()) as pool,
         ):
             with pytest.raises(ProviderUnavailableError):
                 await pool.get_state(airjet_ref())
@@ -167,8 +192,8 @@ def test_a_malformed_frame_ends_the_conversation() -> None:
 def test_a_status_block_that_does_not_fit_the_layout_is_refused() -> None:
     async def scenario() -> None:
         async with (
-            controller(payload=bytearray(b"\x01\x02\x03")) as simulator,
-            connected(simulator, profile()) as pool,
+            controller(payload=bytearray(b"\x01\x02\x03")) as sim,
+            connected(sim, observed()) as pool,
         ):
             with pytest.raises(ProviderUnavailableError, match="unexpected status block"):
                 await pool.get_state(airjet_ref())
@@ -178,9 +203,9 @@ def test_a_status_block_that_does_not_fit_the_layout_is_refused() -> None:
 
 def test_polling_yields_a_snapshot_when_the_controller_changes() -> None:
     async def scenario() -> float | None:
-        async with controller() as simulator, connected(simulator, profile()) as pool:
+        async with controller() as sim, connected(sim, observed()) as pool:
             stream = pool.subscribe()
-            simulator.payload = bytearray(initial_payload(current_c=31))
+            sim.payload = bytearray(airjet19_payload(current_c=31))
             event = await anext(stream)
             await stream.aclose()
             return event.state.state.current_temperature_c
@@ -188,9 +213,21 @@ def test_polling_yields_a_snapshot_when_the_controller_changes() -> None:
     assert run(scenario()) == 31.0
 
 
+def test_a_controller_that_hangs_up_after_every_read_still_works() -> None:
+    """Controllers in the field close the connection after an exchange."""
+
+    async def scenario() -> list[float | None]:
+        async with controller(close_after_response=True) as sim, connected(sim, observed()) as pool:
+            return [
+                (await pool.get_state(airjet_ref())).state.current_temperature_c for _ in range(3)
+            ]
+
+    assert run(scenario()) == [24.0, 24.0, 24.0]
+
+
 def test_an_unknown_device_reference_is_refused() -> None:
     async def scenario() -> None:
-        async with controller() as simulator, connected(simulator, profile()) as pool:
+        async with controller() as sim, connected(sim, observed()) as pool:
             elsewhere = ProviderDeviceRef(provider="bestway", provider_device_id="elsewhere")
             with pytest.raises(ProviderUnavailableError):
                 await pool.get_state(elsewhere)
@@ -201,56 +238,49 @@ def test_an_unknown_device_reference_is_refused() -> None:
 # -- writing --------------------------------------------------------------
 
 
-def test_no_write_leaves_the_gateway_while_the_layout_is_unproven() -> None:
+def test_no_control_leaves_the_gateway_while_the_layout_is_unproven() -> None:
     async def scenario() -> int:
-        unproven = profile(Datapoint.HEATER, trusted=False)
-        async with controller() as simulator, connected(simulator, unproven) as pool:
+        unproven = observed(Datapoint.BUBBLES, trusted=False)
+        async with controller() as sim, connected(sim, unproven) as pool:
             with pytest.raises(ProviderRejectedError, match="not verified"):
-                await pool.execute(airjet_ref(), heater_command(on=True))
-            return simulator.write_count
+                await pool.execute(airjet_ref(), bubbles_command(on=True))
+            return sim.write_count
 
     assert run(scenario()) == 0
 
 
-def test_no_write_leaves_the_gateway_for_an_unreleased_capability() -> None:
+def test_no_control_leaves_the_gateway_for_an_unreleased_capability() -> None:
     async def scenario() -> int:
-        async with (
-            controller() as simulator,
-            connected(simulator, profile(Datapoint.HEATER)) as pool,
-        ):
-            command = ProviderCommand(action=Action.SET_BUBBLES, params=OnOffParams(on=True))
+        async with controller() as sim, connected(sim, observed(Datapoint.HEATER)) as pool:
             with pytest.raises(ProviderRejectedError, match="not been released"):
-                await pool.execute(airjet_ref(), command)
-            return simulator.write_count
+                await pool.execute(airjet_ref(), bubbles_command(on=True))
+            return sim.write_count
 
     assert run(scenario()) == 0
 
 
-def test_a_released_capability_writes_and_is_confirmed() -> None:
+def test_a_released_capability_is_controlled_and_confirmed() -> None:
     async def scenario() -> tuple[CommandOutcome, bool | None, int]:
-        async with (
-            controller() as simulator,
-            connected(simulator, profile(Datapoint.HEATER)) as pool,
-        ):
-            result = await pool.execute(airjet_ref(), heater_command(on=True))
+        async with controller() as sim, connected(sim, observed(Datapoint.BUBBLES)) as pool:
+            result = await pool.execute(airjet_ref(), bubbles_command(on=True))
             state = result.state.state if result.state else None
-            return result.outcome, state.heater if state else None, simulator.write_count
+            return result.outcome, state.bubbles if state else None, sim.write_count
 
-    outcome, heater, writes = run(scenario())
+    outcome, bubbles, writes = run(scenario())
     assert outcome is CommandOutcome.APPLIED
-    assert heater is True
+    assert bubbles is True
     assert writes == 1
 
 
-def test_a_write_the_controller_ignores_settles_as_unknown() -> None:
+def test_a_control_the_device_ignores_settles_as_unknown() -> None:
     """Read-after-write is the point: silence is not success."""
 
     async def scenario() -> tuple[CommandOutcome, str | None]:
         async with (
-            controller(honour_writes=False) as simulator,
-            connected(simulator, profile(Datapoint.HEATER)) as pool,
+            controller(honour_writes=False) as sim,
+            connected(sim, observed(Datapoint.BUBBLES)) as pool,
         ):
-            result = await pool.execute(airjet_ref(), heater_command(on=True))
+            result = await pool.execute(airjet_ref(), bubbles_command(on=True))
             return result.outcome, result.failure_code
 
     outcome, failure = run(scenario())
@@ -258,11 +288,23 @@ def test_a_write_the_controller_ignores_settles_as_unknown() -> None:
     assert failure == "not_confirmed_by_device"
 
 
+def test_a_control_request_touches_only_the_flagged_attribute() -> None:
+    async def scenario() -> tuple[bytes, bytes]:
+        async with controller() as sim, connected(sim, observed(Datapoint.BUBBLES)) as pool:
+            before = bytes(sim.payload)
+            await pool.execute(airjet_ref(), bubbles_command(on=True))
+            return before, bytes(sim.payload)
+
+    before, after = run(scenario())
+    differing = [index for index, (a, b) in enumerate(zip(before, after, strict=True)) if a != b]
+    assert differing == [1], "only the flag byte may change"
+
+
 def test_a_setpoint_outside_the_verified_range_never_reaches_the_device() -> None:
     async def scenario() -> int:
         async with (
-            controller() as simulator,
-            connected(simulator, profile(Datapoint.TARGET_TEMPERATURE)) as pool,
+            candidate_controller() as sim,
+            connected(sim, candidate(Datapoint.TARGET_TEMPERATURE)) as pool,
         ):
             command = ProviderCommand(
                 action=Action.SET_TARGET_TEMPERATURE,
@@ -270,7 +312,7 @@ def test_a_setpoint_outside_the_verified_range_never_reaches_the_device() -> Non
             )
             with pytest.raises(ProviderRejectedError, match="verified device range"):
                 await pool.execute(airjet_ref(), command)
-            return simulator.write_count
+            return sim.write_count
 
     assert run(scenario()) == 0
 
@@ -279,47 +321,15 @@ def test_a_setpoint_is_written_in_the_unit_the_controller_uses() -> None:
     async def scenario() -> int:
         payload = bytearray(initial_payload(current_c=100, target_c=100, fahrenheit=True))
         async with (
-            controller(payload=payload) as simulator,
-            connected(simulator, profile(Datapoint.TARGET_TEMPERATURE)) as pool,
+            candidate_controller(payload=payload) as sim,
+            connected(sim, candidate(Datapoint.TARGET_TEMPERATURE)) as pool,
         ):
             command = ProviderCommand(
                 action=Action.SET_TARGET_TEMPERATURE,
                 params=TargetTemperatureParams(celsius=38.0),
             )
             await pool.execute(airjet_ref(), command)
-            return simulator.payload[5]
+            return sim.payload[5]
 
     # 38 C is a little over 100 F, and the controller is addressed in its own unit.
     assert run(scenario()) == 100
-
-
-def test_a_write_changes_nothing_else_on_the_controller() -> None:
-    async def scenario() -> tuple[bytes, bytes]:
-        async with (
-            controller() as simulator,
-            connected(simulator, profile(Datapoint.BUBBLES)) as pool,
-        ):
-            before = bytes(simulator.payload)
-            command = ProviderCommand(action=Action.SET_BUBBLES, params=OnOffParams(on=True))
-            await pool.execute(airjet_ref(), command)
-            return before, bytes(simulator.payload)
-
-    before, after = run(scenario())
-    differing = [index for index, (a, b) in enumerate(zip(before, after, strict=True)) if a != b]
-    assert differing == [4]
-
-
-def test_a_controller_that_hangs_up_after_every_read_still_works() -> None:
-    """Controllers in the field close the connection after an exchange."""
-
-    async def scenario() -> list[float | None]:
-        async with (
-            controller(close_after_response=True) as simulator,
-            connected(simulator, profile()) as pool,
-        ):
-            readings = []
-            for _ in range(3):
-                readings.append((await pool.get_state(airjet_ref())).state.current_temperature_c)
-            return readings
-
-    assert run(scenario()) == [24.0, 24.0, 24.0]

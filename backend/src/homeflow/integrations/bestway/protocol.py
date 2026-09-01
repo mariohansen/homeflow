@@ -38,9 +38,9 @@ MAX_VARINT_BYTES: Final = 4
 class Command(IntEnum):
     """Commands exchanged with the controller.
 
-    Only the read-side commands are needed to observe a device. WRITE_ATTRIBUTE
-    exists so the write path can be implemented and tested, but the adapter
-    refuses to emit it for an unverified datapoint layout.
+    Directions matter here. 0x0093 is app to device and 0x0094 is the device's
+    answer to it; sending 0x0094 at a controller is meaningless, which is what
+    an earlier version of this adapter did.
     """
 
     DEVICE_INFO_REQUEST = 0x0003
@@ -51,10 +51,13 @@ class Command(IntEnum):
     LOGIN_RESPONSE = 0x0009
     HEARTBEAT_REQUEST = 0x0015
     HEARTBEAT_RESPONSE = 0x0016
+    #: Serial data transmit. Carries a p0 read request and answers on 0x0091.
     STATUS_REQUEST = 0x0090
     STATUS_RESPONSE = 0x0091
-    STATUS_REPORT = 0x0093
-    WRITE_ATTRIBUTE = 0x0094
+    #: Serial data control, app to device: a four byte sequence number followed
+    #: by a p0 control payload. The device answers on CONTROL_RESPONSE.
+    CONTROL_REQUEST = 0x0093
+    CONTROL_RESPONSE = 0x0094
 
 
 class ProtocolError(Exception):
@@ -88,6 +91,41 @@ def decode_length_prefixed(payload: bytes) -> bytes:
             raise ProtocolError("length-prefixed field exceeds the permitted maximum")
         return payload
     return body
+
+
+class P0Action:
+    """Action byte that opens a p0 payload, inside the carrier command."""
+
+    CONTROL = 0x01
+    READ = 0x02
+    READ_RESPONSE = 0x03
+    REPORT = 0x04
+
+
+#: A control payload is the action byte, two bytes of attribute flags and the
+#: attribute values block.
+CONTROL_ATTR_FLAGS_BYTES: Final = 2
+CONTROL_SEQUENCE_BYTES: Final = 4
+
+
+def build_control_payload(sequence: int, attr_flags: int, attr_vals: bytes) -> bytes:
+    """Assemble the body of a control request.
+
+    ``attr_flags`` says which attributes the controller should apply, and goes
+    on the wire big-endian: the device byte-swaps it on receipt.
+    """
+    if not 0 <= sequence < 2**32:
+        raise ProtocolError("control sequence number out of range")
+    if not 0 <= attr_flags < 2 ** (8 * CONTROL_ATTR_FLAGS_BYTES):
+        raise ProtocolError("attribute flags do not fit the field")
+    if not attr_vals:
+        raise ProtocolError("a control request needs an attribute value block")
+    return (
+        sequence.to_bytes(CONTROL_SEQUENCE_BYTES, "big")
+        + bytes([P0Action.CONTROL])
+        + attr_flags.to_bytes(CONTROL_ATTR_FLAGS_BYTES, "big")
+        + attr_vals
+    )
 
 
 class IncompleteFrame(ProtocolError):

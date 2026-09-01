@@ -23,6 +23,7 @@ from homeflow.integrations.bestway.protocol import (
     Frame,
     FrameReader,
     ProtocolError,
+    build_control_payload,
     decode_length_prefixed,
     encode_length_prefixed,
 )
@@ -56,6 +57,7 @@ class BestwayClient:
         "_port",
         "_reader",
         "_request_timeout",
+        "_sequence",
         "_stream_reader",
         "_writer",
     )
@@ -77,6 +79,7 @@ class BestwayClient:
         self._reader = FrameReader()
         self._pending: deque[Frame] = deque()
         self._passcode: bytes = b""
+        self._sequence = 0
         self._lock = asyncio.Lock()
 
     @property
@@ -145,16 +148,18 @@ class BestwayClient:
         """Ask for the current status block and return its raw payload."""
         return await self._exchange(
             Frame(command=Command.STATUS_REQUEST, payload=STATUS_READ_PAYLOAD),
-            expect=(Command.STATUS_RESPONSE, Command.STATUS_REPORT),
+            expect=Command.STATUS_RESPONSE,
         )
 
-    async def write_status_payload(self, payload: bytes) -> None:
-        """Send one attribute block.
+    async def send_control(self, attr_flags: int, attr_vals: bytes) -> None:
+        """Ask the controller to apply the flagged attributes.
 
-        The payload is produced by a verified datapoint layout; there is no path
-        from the HomeFlow API to this method that carries caller-supplied bytes.
+        Both arguments come from a verified datapoint layout; no path from the
+        HomeFlow API to this method carries caller-supplied bytes.
         """
-        await self._send(Frame(command=Command.WRITE_ATTRIBUTE, payload=payload))
+        self._sequence = (self._sequence + 1) % 2**32
+        payload = build_control_payload(self._sequence, attr_flags, attr_vals)
+        await self._send(Frame(command=Command.CONTROL_REQUEST, payload=payload))
 
     async def _exchange(
         self,

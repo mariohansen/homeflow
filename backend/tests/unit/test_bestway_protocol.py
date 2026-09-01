@@ -73,7 +73,7 @@ def test_a_length_too_small_for_a_command_is_refused() -> None:
 
 def test_sending_an_oversized_payload_is_refused() -> None:
     with pytest.raises(ProtocolError):
-        Frame(command=Command.WRITE_ATTRIBUTE, payload=b"x" * (MAX_PAYLOAD_BYTES + 1)).encode()
+        Frame(command=Command.CONTROL_REQUEST, payload=b"x" * (MAX_PAYLOAD_BYTES + 1)).encode()
 
 
 def test_an_unknown_command_is_data_not_a_crash() -> None:

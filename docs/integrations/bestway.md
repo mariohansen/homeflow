@@ -41,6 +41,7 @@ Two further properties hold regardless of configuration:
 | --- | --- |
 | Frame layout (magic, varint length, flag, command, payload) | From the published protocol description, confirmed against a physical controller |
 | Command numbers, passcode and login handshake | Confirmed against a physical controller |
+| Control frame (0x0093, sequence, p0 action, attribute flags, values) | From the published protocol description, **not yet confirmed against hardware** |
 | Datapoint offsets in the status block | Product specific. **This is what you verify.** |
 | Temperature range 20–40 °C | A placeholder until your controller's real range is read off the panel |
 
@@ -75,10 +76,26 @@ running. A layout that conflated them would report a running pump as stopped.
 
 Two things are deliberately not mapped:
 
-- **The temperature unit flag was not identified.** Values are read as Celsius.
-  A controller switched to Fahrenheit would report wrongly, so confirm the unit
-  on your panel and leave it there.
-- **Bits 0 and 6 of byte 1 were set throughout** and remain unexplained.
+- **The temperature unit is not mapped.** Values are read as Celsius. Bit 6 of
+  the flag byte is `temp_set_unit`, and it was set on a controller displaying
+  Celsius, but one observation is not enough to fix the polarity. Confirm the
+  unit on your panel and leave it there.
+- **Bit 0 is `power` and bit 5 is `earth`.** Neither is exposed.
+
+### Controlling
+
+A control request is `0x0093` carrying a four byte sequence number, the p0
+action `0x01`, two bytes of attribute flags **big-endian**, and a fourteen byte
+attribute value block. The flags name which attributes the controller should
+apply; the values are the block the controller last reported, with a single
+field changed.
+
+Attribute flag bits follow the same order as the flag byte: `power` 0,
+`heat_power` 1, `filter_power` 2, `wave_power` 3, `locked` 4, `earth` 5,
+`temp_set_unit` 6.
+
+**The setpoint's flag bit is not known**, so `TARGET_TEMPERATURE` cannot be
+released on this layout. The configuration refuses it rather than guessing.
 
 ## Verifying your controller
 
