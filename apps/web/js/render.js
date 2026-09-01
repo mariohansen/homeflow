@@ -117,7 +117,10 @@ function sliderRow(label, { value, min, max, step, unit, disabled, format, onCom
 
 function poolBody(device, ctx) {
   const { state, constraints } = device;
-  const disabled = ctx.isBusy(device.id) || device.availability === "OFFLINE";
+  const offline = device.availability === "OFFLINE";
+  // Only the control being operated waits. A pending heater command must not
+  // take the pump switch away, which is exactly when it is wanted.
+  const busy = (action) => offline || ctx.isBusy(device.id, action);
   const parts = [];
 
   if (state.currentTemperatureC !== null && state.currentTemperatureC !== undefined) {
@@ -154,7 +157,7 @@ function poolBody(device, ctx) {
         step: constraints.targetTemperatureStepC ?? 0.5,
         unit: " °C",
         format: (value) => formatNumber(value),
-        disabled,
+        disabled: busy("SET_TARGET_TEMPERATURE"),
         onDrag: () => ctx.holdRender(device.id),
         onCommit: (celsius) =>
           ctx.execute(device, "SET_TARGET_TEMPERATURE", { celsius: Number(celsius) }),
@@ -175,7 +178,7 @@ function poolBody(device, ctx) {
       controls.push(
         toggleRow(t(labelKey), {
           checked: value,
-          disabled,
+          disabled: busy(action),
           onToggle: (on) => ctx.execute(device, action, { on }),
         }),
       );
@@ -196,14 +199,15 @@ function poolBody(device, ctx) {
 }
 
 function lightBody(device, ctx) {
-  const disabled = ctx.isBusy(device.id) || device.availability === "OFFLINE";
+  const offline = device.availability === "OFFLINE";
+  const busy = (action) => offline || ctx.isBusy(device.id, action);
   const controls = [];
 
   if (has(device, "POWER") && device.state.power !== null && device.state.power !== undefined) {
     controls.push(
       toggleRow(t("device.power"), {
         checked: device.state.power,
-        disabled,
+        disabled: busy("SET_POWER"),
         onToggle: (on) => ctx.execute(device, "SET_POWER", { on }),
       }),
     );
@@ -221,7 +225,7 @@ function lightBody(device, ctx) {
         max: 100,
         step: 1,
         unit: " %",
-        disabled,
+        disabled: busy("SET_BRIGHTNESS"),
         onDrag: () => ctx.holdRender(device.id),
         onCommit: (brightness) => ctx.execute(device, "SET_BRIGHTNESS", { brightness }),
       }),
@@ -232,7 +236,8 @@ function lightBody(device, ctx) {
 }
 
 function mediaBody(device, ctx) {
-  const disabled = ctx.isBusy(device.id) || device.availability === "OFFLINE";
+  const offline = device.availability === "OFFLINE";
+  const busy = (action) => offline || ctx.isBusy(device.id, action);
   const { state } = device;
   const parts = [];
   const controls = [];
@@ -246,7 +251,7 @@ function mediaBody(device, ctx) {
       onclick: () =>
         ctx.execute(device, "SET_PLAYBACK", { playback: playing ? "PAUSE" : "PLAY" }),
     });
-    if (disabled) button.disabled = true;
+    if (busy("SET_PLAYBACK")) button.disabled = true;
     controls.push(
       el("div", { class: "control" }, [
         el("span", { class: "control__label", text: t(`playback.${state.playback}`) }),
@@ -263,7 +268,7 @@ function mediaBody(device, ctx) {
         max: 100,
         step: 1,
         unit: " %",
-        disabled,
+        disabled: busy("SET_VOLUME"),
         onDrag: () => ctx.holdRender(device.id),
         onCommit: (volume) => ctx.execute(device, "SET_VOLUME", { volume }),
       }),
@@ -275,7 +280,8 @@ function mediaBody(device, ctx) {
 }
 
 function lockBody(device, ctx) {
-  const disabled = ctx.isBusy(device.id) || device.availability === "OFFLINE";
+  const disabled =
+    device.availability === "OFFLINE" || ctx.isBusy(device.id, "SET_LOCK_STATE");
   const lockState = device.state.lockState ?? "UNKNOWN";
   const parts = [
     el("div", { class: "readout" }, [
@@ -393,7 +399,7 @@ export function renderDevice(device, ctx) {
     );
   }
 
-  if (ctx.isBusy(device.id)) card.setAttribute("aria-busy", "true");
+  if (ctx.hasPending(device.id)) card.setAttribute("aria-busy", "true");
   return card;
 }
 

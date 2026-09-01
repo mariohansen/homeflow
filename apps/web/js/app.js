@@ -54,8 +54,11 @@ const state = {
 
 /* --- Command context passed to the renderer ------------------------------ */
 
+const pendingKey = (deviceId, action) => `${deviceId}|${action}`;
+
 const ctx = {
-  isBusy: (deviceId) => state.busy.has(deviceId),
+  isBusy: (deviceId, action) => state.busy.has(pendingKey(deviceId, action)),
+  hasPending: (deviceId) => [...state.busy].some((key) => key.startsWith(`${deviceId}|`)),
   noticeFor: (deviceId) => state.notices.get(deviceId) ?? null,
   holdRender: (deviceId) => holdRender(deviceId),
   execute: (device, action, parameters) => execute(device, action, parameters),
@@ -77,7 +80,8 @@ function releaseHold(deviceId) {
 }
 
 async function execute(device, action, parameters) {
-  state.busy.add(device.id);
+  const key = pendingKey(device.id, action);
+  state.busy.add(key);
   state.notices.delete(device.id);
   patchDevice(device.id, { force: true });
 
@@ -99,7 +103,7 @@ async function execute(device, action, parameters) {
       return;
     }
   } finally {
-    state.busy.delete(device.id);
+    state.busy.delete(key);
     releaseHold(device.id);
   }
 
@@ -189,6 +193,10 @@ function reportError(error) {
 /* --- Session -------------------------------------------------------------- */
 
 async function startSession(token) {
+  // A second session must not leave the first socket reconnecting forever.
+  state.live?.stop();
+  state.live = null;
+
   const api = new Api(token);
   const identity = await api.me();
 

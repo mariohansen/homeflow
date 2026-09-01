@@ -52,12 +52,17 @@ function switches(node) {
 
 const { renderDevice } = await import(pathToFileURL(renderPath).href);
 
-const ctx = {
-  isBusy: () => false,
-  noticeFor: () => null,
-  holdRender: () => {},
-  execute: () => {},
-};
+function context(pending = new Set()) {
+  return {
+    isBusy: (deviceId, action) => pending.has(`${deviceId}|${action}`),
+    hasPending: (deviceId) => [...pending].some((key) => key.startsWith(`${deviceId}|`)),
+    noticeFor: () => null,
+    holdRender: () => {},
+    execute: () => {},
+  };
+}
+
+const ctx = context();
 
 function pool(capabilities) {
   return {
@@ -122,3 +127,21 @@ function pool(capabilities) {
 }
 
 console.log("pool card: read-only state visible, controls only when released");
+
+/* A pending command waits on its own control, not on the whole device. */
+{
+  const device = pool(["CURRENT_TEMPERATURE", "HEATING", "FILTER", "BUBBLES"]);
+  const busy = context(new Set([`${device.id}|SET_HEATER`]));
+  const card = renderDevice(device, busy);
+  const controls = switches(card);
+
+  assert.equal(controls.length, 3, "three released capabilities are still rendered");
+  assert.equal(
+    controls.filter((item) => item.disabled).length,
+    1,
+    "only the control with a command in flight may be disabled",
+  );
+  assert.equal(card.attributes["aria-busy"], "true", "the card still reports activity");
+}
+
+console.log("pool card: a pending heater command leaves the pump switch usable");

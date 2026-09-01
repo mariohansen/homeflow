@@ -281,6 +281,17 @@ this is answered**, and do not release it at all if the lock blocks the network.
 Keep the panel unlocked while verifying any other capability, so a control that
 does not respond has only one possible explanation.
 
+### The heater drives the pump
+
+On the controller this layout came from, switching the heater on also starts the
+filter pump, and switching the heater off leaves the pump running. That is the
+vendor app's behaviour too, and HomeFlow reproduces it rather than papering over
+it: the pump is stopped separately, as at the panel.
+
+Because a control request waits several seconds for the controller to confirm,
+the interface keeps every other control usable while one is in flight. Stopping
+the pump right after stopping the heater therefore does not have to wait.
+
 ### Before releasing the heater
 
 The heater is the one with real physical consequences. Check that your
