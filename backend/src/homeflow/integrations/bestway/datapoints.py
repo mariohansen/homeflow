@@ -293,9 +293,9 @@ AIRJET_19BYTE_PROFILE = DatapointProfile(
     # those were confirmed by pressing buttons on a controller.
     #
     # The setpoint is the eighth attribute and the byte right after the flag
-    # byte in the value block, so bit 7 follows from the ordering rather than
-    # from documentation. It has not been confirmed on hardware; the read-back
-    # is what will settle it, and an unconfirmed write reports UNKNOWN.
+    # byte in the value block, so bit 7 follows from the ordering. Derived that
+    # way rather than read from documentation, then confirmed on a controller:
+    # the setpoint changed and the panel agreed.
     control_flag_bits={
         Datapoint.HEATER: 1,
         Datapoint.FILTER_PUMP: 2,

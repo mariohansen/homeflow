@@ -131,7 +131,7 @@ Details: [SECURITY.md](SECURITY.md), [threat model](docs/security/threat-model.m
 | Integration | Status | Notes |
 | --- | --- | --- |
 | Demo (synthetic) | Working | Pool, lights, speaker, lock, appliances |
-| Bestway AirJet | Implemented, awaiting hardware verification | Local Gizwits/GAgent TCP; read and control paths exist but stay locked until the datapoint layout is proven against the panel |
+| Bestway AirJet | Working | Local Gizwits/GAgent TCP; verified against a physical controller, each control released after its effect was observed |
 | Home Assistant | Planned | REST plus WebSocket, as an integration gateway |
 | Philips Hue | Planned | Via Home Assistant |
 | Sonos | Planned | Via Home Assistant |
@@ -258,8 +258,8 @@ semantic actions only.
 | --- | --- | --- |
 | 0 | Safe project foundation | Done |
 | 1 | End-to-end synthetic slice (Demo Pool), gateway and client | Done |
-| 2 | Bestway AirJet, read-only | Code complete; needs hardware verification |
-| 3 | Bestway control, capability by capability | Code complete; each capability released after physical verification |
+| 2 | Bestway AirJet, read-only | Done, verified against the physical controller |
+| 3 | Bestway control, capability by capability | Done: bubbles, filter, heater, setpoint and panel lock |
 | 4 | Home Assistant adapter | Next |
 | 5 | Hue and Sonos | |
 | 6 | Nuki, after client authentication and a security review | |

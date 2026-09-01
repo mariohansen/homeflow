@@ -121,6 +121,8 @@ function poolBody(device, ctx) {
   // Only the control being operated waits. A pending heater command must not
   // take the pump switch away, which is exactly when it is wanted.
   const busy = (action) => offline || ctx.isBusy(device.id, action);
+  // A setpoint is a value, not an act: the newest one simply replaces the one
+  // still in flight, so the slider never has to wait for the controller.
   const parts = [];
 
   if (state.currentTemperatureC !== null && state.currentTemperatureC !== undefined) {
@@ -157,7 +159,7 @@ function poolBody(device, ctx) {
         step: constraints.targetTemperatureStepC ?? 0.5,
         unit: " °C",
         format: (value) => formatNumber(value),
-        disabled: busy("SET_TARGET_TEMPERATURE"),
+        disabled: offline,
         onDrag: () => ctx.holdRender(device.id),
         onCommit: (celsius) =>
           ctx.execute(device, "SET_TARGET_TEMPERATURE", { celsius: Number(celsius) }),
@@ -225,7 +227,7 @@ function lightBody(device, ctx) {
         max: 100,
         step: 1,
         unit: " %",
-        disabled: busy("SET_BRIGHTNESS"),
+        disabled: offline,
         onDrag: () => ctx.holdRender(device.id),
         onCommit: (brightness) => ctx.execute(device, "SET_BRIGHTNESS", { brightness }),
       }),
@@ -268,7 +270,7 @@ function mediaBody(device, ctx) {
         max: 100,
         step: 1,
         unit: " %",
-        disabled: busy("SET_VOLUME"),
+        disabled: offline,
         onDrag: () => ctx.holdRender(device.id),
         onCommit: (volume) => ctx.execute(device, "SET_VOLUME", { volume }),
       }),

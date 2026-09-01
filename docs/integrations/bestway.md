@@ -95,10 +95,9 @@ Attribute flag bits follow the same order as the flag byte: `power` 0,
 `temp_set_unit` 6.
 
 The setpoint is the eighth attribute and sits in the value block right after
-the flag byte, so its flag is **bit 7 by the same ordering**. That one follows
-from the structure rather than from documentation and has not been confirmed on
-hardware. Releasing it is allowed, and the read-back is what settles it: an
-unconfirmed change reports `UNKNOWN` rather than success.
+the flag byte, so its flag is **bit 7 by the same ordering**. That one was
+derived from the structure rather than read from documentation, and then
+confirmed on a controller: the setpoint changed and the panel agreed.
 
 ## Verifying your controller
 
@@ -261,25 +260,24 @@ HOMEFLOW_BESTWAY_WRITE_ENABLED=BUBBLES,FILTER_PUMP
 Valid names: `BUBBLES`, `FILTER_PUMP`, `HEATER`, `TARGET_TEMPERATURE`,
 `CONTROL_PANEL_LOCK`.
 
-### The control panel lock, and a possible one-way door
+### The control panel lock
 
-Whether the panel lock also blocks commands arriving over the network is
-firmware specific and **has not been verified**. On many controllers the lock
-only disables the physical buttons, which is what it is for.
+On the controller this layout came from, the lock disables the physical buttons
+only: every function stayed controllable from the app with the panel locked. So
+`CONTROL_PANEL_LOCK` is not the one-way door it could have been, and may be
+released like any other capability.
 
-Find out before releasing anything else: lock the panel, then toggle an already
-released control from the app.
+Confirm it on your own controller before releasing it, because the opposite
+behaviour would be a trap: if the lock also blocked the network, locking the
+panel from the app would disable the app's own controls and unlocking would mean
+walking to the tub. Lock the panel, then toggle an already released control.
 
 * The control still works — the lock covers the buttons only.
-* The command settles as `UNKNOWN` — the lock covers the network too.
+* The command settles as `UNKNOWN` — the lock covers the network too, and this
+  capability should not be released at all.
 
-The second outcome matters, because it makes `CONTROL_PANEL_LOCK` a trap: locking
-the panel from the app would disable the app's own controls, and unlocking would
-mean walking to the tub. **Do not release `CONTROL_PANEL_LOCK` for writing until
-this is answered**, and do not release it at all if the lock blocks the network.
-
-Keep the panel unlocked while verifying any other capability, so a control that
-does not respond has only one possible explanation.
+Keep the panel unlocked while verifying any *other* capability, so a control
+that does not respond has only one possible explanation.
 
 ### The heater drives the pump
 

@@ -47,6 +47,9 @@ const state = {
   identity: null,
   devices: new Map(),
   busy: new Set(),
+  // At most one waiting request per control: a newer desired value makes the
+  // one queued behind it pointless, so it replaces it.
+  queued: new Map(),
   held: new Map(),
   notices: new Map(),
   view: "home",
@@ -81,6 +84,13 @@ function releaseHold(deviceId) {
 
 async function execute(device, action, parameters) {
   const key = pendingKey(device.id, action);
+  if (state.busy.has(key)) {
+    // Commands are desired state, so only the last one matters. Queueing them
+    // all would make the device work through a history nobody wants.
+    state.queued.set(key, { device, action, parameters });
+    return;
+  }
+
   state.busy.add(key);
   state.notices.delete(device.id);
   patchDevice(device.id, { force: true });
@@ -104,9 +114,18 @@ async function execute(device, action, parameters) {
     }
   } finally {
     state.busy.delete(key);
-    releaseHold(device.id);
   }
 
+  const next = state.queued.get(key);
+  if (next) {
+    state.queued.delete(key);
+    // Keep the render held so the control does not flick back to the value
+    // that is already on its way to being replaced.
+    await execute(next.device, next.action, next.parameters);
+    return;
+  }
+
+  releaseHold(device.id);
   // The command response reflects the device; refresh from the snapshot so the
   // card shows confirmed state rather than what we hoped for.
   await refreshDevices();
@@ -232,6 +251,7 @@ function signOut() {
   state.devices.clear();
   state.notices.clear();
   state.busy.clear();
+  state.queued.clear();
   clearCredential();
   dom.shell.hidden = true;
   dom.connect.hidden = false;
