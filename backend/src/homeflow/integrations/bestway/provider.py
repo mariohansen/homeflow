@@ -170,6 +170,7 @@ class BestwayProvider:
                 payload = await self._read_payload()
             except ProviderUnavailableError:
                 if self._availability is not Availability.OFFLINE:
+                    _logger.warning("bestway.unreachable", provider=PROVIDER_NAME)
                     self._availability = Availability.OFFLINE
                     yield ProviderEvent(ref=airjet_ref(), state=self._offline_snapshot())
                 continue
@@ -290,6 +291,9 @@ class BestwayProvider:
             ) from exc
 
         self._last_payload = payload
+        if self._availability is not Availability.ONLINE:
+            # Worth a line: the controller went from unreachable to reachable.
+            _logger.info("bestway.reachable", provider=PROVIDER_NAME)
         self._availability = Availability.ONLINE
         return payload
 

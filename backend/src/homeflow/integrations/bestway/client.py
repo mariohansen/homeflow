@@ -130,7 +130,9 @@ class BestwayClient:
             await self.close()
             raise
 
-        _logger.info("bestway.connected", provider="bestway")
+        # Routine: controllers hang up after each exchange, so this happens
+        # on every poll and says nothing an operator needs to read.
+        _logger.debug("bestway.connected", provider="bestway")
 
     async def close(self) -> None:
         writer, self._writer, self._stream_reader = self._writer, None, None
