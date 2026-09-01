@@ -111,3 +111,22 @@ def test_production_refuses_a_wildcard_host() -> None:
 def test_non_demo_requires_an_id_salt() -> None:
     with pytest.raises(ValueError, match="ID_SALT"):
         make_settings(env=Environment.DEVELOPMENT, demo_mode=False)
+
+
+def test_list_settings_survive_the_trip_through_an_environment_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A list in the environment is comma separated, not JSON.
+
+    Production is told to set HOMEFLOW_ALLOWED_HOSTS, so this path has to work
+    from a real environment variable and not only from a keyword argument.
+    """
+    monkeypatch.setenv("HOMEFLOW_ALLOWED_HOSTS", "gateway.example.internal, localhost")
+    monkeypatch.setenv("HOMEFLOW_BESTWAY_WRITE_ENABLED", "BUBBLES,HEATER")
+    # Releasing a capability still requires a verified layout, even here.
+    monkeypatch.setenv("HOMEFLOW_BESTWAY_TRUST_PROFILE", "true")
+
+    settings = make_settings(env=Environment.TEST, demo_mode=True)
+
+    assert settings.allowed_hosts == ("gateway.example.internal", "localhost")
+    assert settings.bestway_write_enabled == ("BUBBLES", "HEATER")

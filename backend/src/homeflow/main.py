@@ -95,6 +95,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            # Adapters that hold a socket get the chance to hang up cleanly.
+            for provider in container.providers.values():
+                closer = getattr(provider, "aclose", None)
+                if closer is not None:
+                    with contextlib.suppress(Exception):
+                        await closer()
             _logger.info("gateway.stopped")
 
     app = FastAPI(

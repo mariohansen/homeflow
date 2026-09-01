@@ -131,7 +131,7 @@ Details: [SECURITY.md](SECURITY.md), [threat model](docs/security/threat-model.m
 | Integration | Status | Notes |
 | --- | --- | --- |
 | Demo (synthetic) | Working | Pool, lights, speaker, lock, appliances |
-| Bestway AirJet | Planned | Local Gizwits/GAgent TCP, read-only first |
+| Bestway AirJet | Implemented, awaiting hardware verification | Local Gizwits/GAgent TCP; read and control paths exist but stay locked until the datapoint layout is proven against the panel |
 | Home Assistant | Planned | REST plus WebSocket, as an integration gateway |
 | Philips Hue | Planned | Via Home Assistant |
 | Sonos | Planned | Via Home Assistant |
@@ -177,6 +177,28 @@ valid 30 seconds** and presents it through `Sec-WebSocket-Protocol`.
 The trade-off, recorded in [ADR 0011](docs/adr/0011-installable-web-client.md):
 no widgets, Control Center controls, App Intents, Live Activities or reliable
 background push. Those wait for a native client, which needs a Mac.
+
+## Talking to real hardware safely
+
+The Bestway adapter is the first integration that touches a physical device, and
+its datapoint layout is product specific and undocumented. Writing to the wrong
+offset is how a hot tub gets told to do the wrong thing, so the layout is treated
+as a claim to be proven rather than a fact:
+
+- until an operator confirms the decoded values against the physical panel, the
+  controller is **not exposed as a device at all** — a wrong temperature never
+  reaches a screen;
+- each control is released **individually**, after its effect has been observed;
+- a write is never blind: it is the status block the controller just reported
+  with one field changed;
+- a write is read back, and an unconfirmed change settles as `UNKNOWN`.
+
+Both gates default to refusing, and a configuration that releases a control
+without a verified layout does not start. The verification procedure, including
+a probe that shows which bit moves when you press a button on the tub, is in
+[docs/integrations/bestway.md](docs/integrations/bestway.md).
+
+The whole stack runs against a synthetic controller, which is what CI uses.
 
 ## Demo mode
 
@@ -236,9 +258,9 @@ semantic actions only.
 | --- | --- | --- |
 | 0 | Safe project foundation | Done |
 | 1 | End-to-end synthetic slice (Demo Pool), gateway and client | Done |
-| 2 | Bestway AirJet, read-only | Next |
-| 3 | Bestway control, capability by capability | |
-| 4 | Home Assistant adapter | |
+| 2 | Bestway AirJet, read-only | Code complete; needs hardware verification |
+| 3 | Bestway control, capability by capability | Code complete; each capability released after physical verification |
+| 4 | Home Assistant adapter | Next |
 | 5 | Hue and Sonos | |
 | 6 | Nuki, after client authentication and a security review | |
 | 7–12 | tado°, Miele, Ring, Alexa, usability, analytics | |

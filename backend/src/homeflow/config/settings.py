@@ -10,10 +10,10 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 #: Fixed, deliberately public salt used for demo-mode device identifiers so that
 #: screenshots, fixtures and tests are reproducible. Synthetic data only.
@@ -45,7 +45,9 @@ class Settings(BaseSettings):
 
     #: Host header allowlist. A wildcard is refused in production because a
     #: permissive Host check is what makes DNS rebinding work.
-    allowed_hosts: tuple[str, ...] = ("*",)
+    #: NoDecode keeps pydantic-settings from trying to read the environment
+    #: value as JSON, so a plain comma-separated list works.
+    allowed_hosts: Annotated[tuple[str, ...], NoDecode] = ("*",)
 
     #: Secret used to derive HomeFlow device UUIDs from provider identifiers.
     #: Keeps provider ids out of public identifiers without a database.
@@ -73,13 +75,31 @@ class Settings(BaseSettings):
     #: for ``apps/web`` next to the backend and serves it if present.
     web_client_dir: Path | None = None
 
+    # -- Bestway AirJet ---------------------------------------------------
+    #: Off by default: the adapter talks to real hardware.
+    bestway_enabled: bool = False
+    bestway_host: str | None = None
+    bestway_port: int = Field(default=12416, ge=1, le=65535)
+    bestway_poll_seconds: float = Field(default=15.0, ge=2.0, le=300.0)
+    #: Built-in datapoint layout to start from.
+    bestway_profile: str = "airjet-candidate"
+    #: Operator-supplied layout, which overrides the built-in one.
+    bestway_profile_path: Path | None = None
+    #: Set only after decoded values have been compared with the physical panel.
+    #: Until then the controller is not exposed as a device at all.
+    bestway_trust_profile: bool = False
+    #: Datapoints released for writing, one at a time, each after the physical
+    #: effect has been observed. Comma separated, e.g. "HEATER,FILTER_PUMP".
+    bestway_write_enabled: Annotated[tuple[str, ...], NoDecode] = ()
+
     #: Demo simulation only. Ignored unless demo_mode is enabled.
     demo_tick_seconds: float = Field(default=2.0, gt=0.0)
     demo_failure_rate: float = Field(default=0.0, ge=0.0, le=1.0)
 
-    @field_validator("allowed_hosts", mode="before")
+    @field_validator("allowed_hosts", "bestway_write_enabled", mode="before")
     @classmethod
-    def _split_hosts(cls, value: object) -> object:
+    def _split_list(cls, value: object) -> object:
+        """Accept a comma-separated string, which is how an env var carries a list."""
         if isinstance(value, str):
             return tuple(item.strip() for item in value.split(",") if item.strip())
         return value
@@ -102,6 +122,19 @@ class Settings(BaseSettings):
                     "HOMEFLOW_ALLOWED_HOSTS must list the exact private hostnames the "
                     "gateway answers on; a wildcard enables DNS rebinding."
                 )
+        if self.bestway_enabled and not self.bestway_host:
+            raise ValueError("HOMEFLOW_BESTWAY_HOST is required when the adapter is enabled")
+        if self.bestway_write_enabled and not self.bestway_trust_profile:
+            raise ValueError(
+                "HOMEFLOW_BESTWAY_WRITE_ENABLED requires HOMEFLOW_BESTWAY_TRUST_PROFILE: a "
+                "capability cannot be released for writing while the datapoint layout is "
+                "still unverified."
+            )
+        if self.bestway_enabled and self.demo_mode:
+            raise ValueError(
+                "Demo mode must not run alongside the Bestway adapter: a demo build must "
+                "not be able to reach real hardware."
+            )
         if not self.demo_mode and self.id_salt is None:
             raise ValueError(
                 "HOMEFLOW_ID_SALT is required outside demo mode so that public device "

@@ -20,6 +20,15 @@ from homeflow.devices.registry import DeviceRegistry
 from homeflow.devices.service import DeviceService
 from homeflow.events.bus import EventBus
 from homeflow.integrations.base.provider import DeviceProvider
+from homeflow.integrations.bestway.client import BestwayClient
+from homeflow.integrations.bestway.datapoints import (
+    Datapoint,
+    DatapointProfile,
+    ProfileError,
+    builtin_profile,
+    load_profile,
+)
+from homeflow.integrations.bestway.provider import BestwayProvider
 from homeflow.integrations.demo.provider import DemoProvider
 from homeflow.log import get_logger
 from homeflow.ratelimit import RateLimiter
@@ -43,6 +52,31 @@ class Container:
     command_rate_limiter: RateLimiter
 
 
+def build_bestway_profile(settings: Settings) -> DatapointProfile:
+    """Resolve the datapoint layout and apply the operator's release decisions.
+
+    The layout is re-validated rather than patched in place, so a released
+    datapoint that has no location in the layout fails at startup instead of at
+    the moment someone taps a control.
+    """
+    base = (
+        load_profile(settings.bestway_profile_path)
+        if settings.bestway_profile_path is not None
+        else builtin_profile(settings.bestway_profile)
+    )
+
+    try:
+        writable = frozenset(Datapoint(name) for name in settings.bestway_write_enabled)
+    except ValueError as exc:
+        raise ProfileError(
+            f"HOMEFLOW_BESTWAY_WRITE_ENABLED names an unknown datapoint: {exc}"
+        ) from exc
+
+    return DatapointProfile.model_validate(
+        base.model_dump() | {"trusted": settings.bestway_trust_profile, "writable": writable}
+    )
+
+
 def build_providers(settings: Settings, clock: Clock) -> dict[str, DeviceProvider]:
     if settings.demo_mode:
         provider = DemoProvider(
@@ -52,10 +86,28 @@ def build_providers(settings: Settings, clock: Clock) -> dict[str, DeviceProvide
         )
         return {provider.name: provider}
 
-    # Real adapters arrive with roadmap phases 2 to 4. Until then a non-demo
-    # deployment exposes an empty, harmless device list rather than guessing.
-    _logger.warning("providers.none_configured", demo_mode=False)
-    return {}
+    providers: dict[str, DeviceProvider] = {}
+
+    if settings.bestway_enabled and settings.bestway_host:
+        profile = build_bestway_profile(settings)
+        bestway = BestwayProvider(
+            client=BestwayClient(settings.bestway_host, settings.bestway_port),
+            profile=profile,
+            clock=clock,
+            poll_seconds=settings.bestway_poll_seconds,
+        )
+        providers[bestway.name] = bestway
+        _logger.info(
+            "providers.bestway_configured",
+            profile=profile.name,
+            layout_verified=profile.trusted,
+            released_for_writing=sorted(item.value for item in profile.writable),
+        )
+
+    if not providers:
+        # Better an empty, harmless device list than a guess about the household.
+        _logger.warning("providers.none_configured", demo_mode=False)
+    return providers
 
 
 def build_container(settings: Settings, *, clock: Clock | None = None) -> Container:
