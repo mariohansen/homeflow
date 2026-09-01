@@ -74,6 +74,17 @@ def hex_dump(payload: bytes) -> str:
     return "\n".join(lines)
 
 
+def decimal_table(payload: bytes) -> str:
+    """Every byte as a decimal number.
+
+    While the layout is still being worked out against the control panel, a
+    temperature is far easier to spot here than in hex.
+    """
+    cells = [f"[{index}]={byte}" for index, byte in enumerate(payload)]
+    rows = [cells[start : start + 8] for start in range(0, len(cells), 8)]
+    return "\n".join("  " + "  ".join(row) for row in rows)
+
+
 def describe(profile: DatapointProfile, payload: bytes) -> str:
     try:
         decoded = profile.decode(payload)
@@ -159,21 +170,35 @@ async def probe(args: argparse.Namespace) -> int:
                 await asyncio.sleep(args.interval)
                 continue
 
+            fits = len(payload) == profile.minimum_payload_length
+
             if previous is None:
                 print(f"status payload ({len(payload)} bytes)")
                 print(hex_dump(payload))
                 print()
-                print("decoded with the current layout")
-                print(describe(profile, payload))
+                print("as decimal")
+                print(decimal_table(payload))
                 print()
-                if not args.watch:
-                    print("Compare every line above with the physical control panel.")
-                    print("See docs/integrations/bestway.md for what to do next.")
+                if fits:
+                    print("decoded with the current layout")
+                    print(describe(profile, payload))
+                    if not args.watch:
+                        print()
+                        print("Compare every line with the physical control panel.")
+                else:
+                    print(
+                        f"This layout describes {profile.minimum_payload_length} bytes and the "
+                        f"controller sends {len(payload)}, so it does not apply here and no "
+                        "decoded values are shown."
+                    )
+                    print("Find the real positions with --watch, one button at a time.")
+                print("See docs/integrations/bestway.md for what to do next.")
+                print()
             elif payload != previous:
                 print("change detected")
                 for line in differences(previous, payload):
                     print(line)
-                print(describe(profile, payload))
+                print(describe(profile, payload) if fits else decimal_table(payload))
                 print()
 
             previous = payload
