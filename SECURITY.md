@@ -82,6 +82,11 @@ is stored hashed and is compared in constant time.
 Home Assistant, Nuki or a device. Only semantic HomeFlow actions exist, so the
 API cannot be used as a proxy into the home network.
 
+**Authentication throttling counts failures.** Guessing a credential produces
+failed attempts and is throttled per peer; a client that reloads or reconnects
+produces successful ones and is not, because locking a household out of its own
+home is its own kind of failure.
+
 **Bounded resources.** Explicit timeouts on external I/O, bounded event queues
 with an explicit resync signal, per-client rate limits, per-device command
 serialisation, and bounded retention of commands and audit entries.

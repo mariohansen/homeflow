@@ -205,3 +205,23 @@ def test_websocket_streams_state_changes(
         assert device["id"] == pool["id"]
         assert device["state"]["bubbles"] is True
         assert "provider" not in json.dumps(state_frames[-1])
+
+
+def test_a_client_that_reconnects_often_is_not_locked_out(
+    client: TestClient, auth: dict[str, str]
+) -> None:
+    """The auth budget exists to blunt guessing, not to punish a reload.
+
+    A page load spends several authenticated requests, so counting successes
+    against the same budget locked a household out of its own home.
+    """
+    for _ in range(40):
+        assert client.get("/v1/devices", headers=auth).status_code == 200
+        assert client.post("/v1/auth/ws-ticket", headers=auth).status_code == 200
+
+
+def test_repeated_failures_are_throttled(client: TestClient) -> None:
+    wrong = {"Authorization": "Bearer not-the-token"}
+    statuses = {client.get("/v1/devices", headers=wrong).status_code for _ in range(40)}
+    assert 401 in statuses, "the first attempts are simply refused"
+    assert 429 in statuses, "persistent guessing is throttled"

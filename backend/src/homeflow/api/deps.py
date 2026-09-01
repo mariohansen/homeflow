@@ -54,14 +54,16 @@ def authenticate(
     Credentials are read from the ``Authorization`` header only: the security
     policy rules out query-string tokens because URLs end up in logs.
     """
-    if not container.auth_rate_limiter.allow(_peer(connection)):
-        raise RateLimitedError("Too many authentication attempts.")
-
     token = _bearer_token(connection.headers.get("authorization"))
     try:
         return container.clients.authenticate(token)
     except UnauthenticatedError:
+        # Only failures are counted. Brute forcing produces failures, while a
+        # client that reconnects or reloads produces successes, and throttling
+        # those locks a household out of its own home.
         _logger.warning("auth.rejected", path=str(connection.url.path))
+        if not container.auth_rate_limiter.allow(_peer(connection)):
+            raise RateLimitedError("Too many failed authentication attempts.") from None
         raise
 
 
@@ -75,12 +77,20 @@ def authenticate_websocket(
     cannot set headers here, so they present a single-use ticket through
     ``Sec-WebSocket-Protocol`` instead — never in the URL, which would be logged.
     """
-    if not container.auth_rate_limiter.allow(_peer(websocket)):
-        raise RateLimitedError("Too many authentication attempts.")
+
+    def refuse() -> UnauthenticatedError:
+        """Count the failure, and say so differently once there are too many."""
+        _logger.warning("auth.websocket_rejected")
+        if not container.auth_rate_limiter.allow(_peer(websocket)):
+            raise RateLimitedError("Too many failed authentication attempts.")
+        return UnauthenticatedError()
 
     token = _bearer_token(websocket.headers.get("authorization"))
     if token is not None:
-        return container.clients.authenticate(token), None
+        try:
+            return container.clients.authenticate(token), None
+        except UnauthenticatedError:
+            raise refuse() from None
 
     offered = [
         item.strip()
@@ -91,12 +101,14 @@ def authenticate_websocket(
         ticket = ticket_from_protocol(protocol)
         if ticket is None:
             continue
-        principal = container.tickets.redeem(ticket)
+        try:
+            principal = container.tickets.redeem(ticket)
+        except UnauthenticatedError:
+            raise refuse() from None
         selected = WEBSOCKET_SUBPROTOCOL if WEBSOCKET_SUBPROTOCOL in offered else protocol
         return principal, selected
 
-    _logger.warning("auth.websocket_rejected")
-    raise UnauthenticatedError
+    raise refuse()
 
 
 def require_principal(
