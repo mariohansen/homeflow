@@ -97,10 +97,15 @@ class BestwaySimulator:
     close_after_response: bool = False
     #: Where the attribute value block sits inside the status payload.
     control_values_offset: int = 1
+    #: Keep reporting the old block for this many reads after a control, as a
+    #: controller that needs a moment to catch up does.
+    reflect_after_reads: int = 0
 
     _server: asyncio.Server | None = field(default=None, init=False)
     _connections: set[asyncio.StreamWriter] = field(default_factory=set, init=False)
     _logged_in: bool = field(default=False, init=False)
+    _pending: bytearray | None = field(default=None, init=False)
+    _reads_until_reflected: int = field(default=0, init=False)
     write_count: int = field(default=0, init=False)
 
     @property
@@ -165,20 +170,27 @@ class BestwaySimulator:
         if action != P0Action.CONTROL or not values:
             return
 
+        block = bytearray(self.payload)
         target = self.control_values_offset
         for bit in range(7):
             if not flags >> bit & 1:
                 continue
             mask = 1 << bit
             if values[0] & mask:
-                self.payload[target] |= mask
+                block[target] |= mask
             else:
-                self.payload[target] &= 0xFF ^ mask
+                block[target] &= 0xFF ^ mask
 
         # This simulator puts the setpoint behind flag bit 7, one byte after
         # the flag byte. A real controller defines its own mapping.
         if flags >> 7 & 1 and len(values) > 1:
-            self.payload[target + 1] = values[1]
+            block[target + 1] = values[1]
+
+        if self.reflect_after_reads:
+            self._pending = block
+            self._reads_until_reflected = self.reflect_after_reads
+        else:
+            self.payload = block
 
     def _handle(self, frame: Frame) -> list[Frame]:
         match frame.command:
@@ -198,7 +210,12 @@ class BestwaySimulator:
             case Command.STATUS_REQUEST:
                 if self.require_login and not self._logged_in:
                     return []
-                return [Frame(command=Command.STATUS_RESPONSE, payload=bytes(self.payload))]
+                reported = bytes(self.payload)
+                if self._reads_until_reflected > 0:
+                    self._reads_until_reflected -= 1
+                    if self._reads_until_reflected == 0 and self._pending is not None:
+                        self.payload, self._pending = self._pending, None
+                return [Frame(command=Command.STATUS_RESPONSE, payload=reported)]
             case Command.CONTROL_REQUEST:
                 self.write_count += 1
                 self._apply_control(frame.payload)

@@ -57,6 +57,12 @@ DEVICE_ID = "airjet"
 
 DEFAULT_POLL_SECONDS = 15.0
 
+#: A controller does not update its status block the instant it acts, so the
+#: read-back is repeated for a short while before the outcome is called
+#: unknown. Only the read repeats; the control request never does.
+DEFAULT_CONFIRM_ATTEMPTS = 6
+DEFAULT_CONFIRM_DELAY_SECONDS = 0.75
+
 #: What a released datapoint lets the client actually do.
 _WRITE_CAPABILITIES: Mapping[Datapoint, Capability] = {
     Datapoint.TARGET_TEMPERATURE: Capability.TARGET_TEMPERATURE,
@@ -89,6 +95,8 @@ class BestwayProvider:
     display_name: str = "Pool"
     room_hint: str | None = "Terrace"
     poll_seconds: float = DEFAULT_POLL_SECONDS
+    confirm_attempts: int = DEFAULT_CONFIRM_ATTEMPTS
+    confirm_delay_seconds: float = DEFAULT_CONFIRM_DELAY_SECONDS
 
     _last_payload: bytes | None = field(default=None, init=False)
     _availability: Availability = field(default=Availability.UNKNOWN, init=False)
@@ -199,23 +207,43 @@ class BestwayProvider:
 
         # Read-after-write. A controller that did not take the change must not
         # be reported as if it had.
-        try:
-            observed = await self._read_payload()
-        except ProviderUnavailableError:
+        observed = await self._confirm(datapoint, value)
+        if observed is None:
             return ProviderCommandResult(
                 outcome=CommandOutcome.UNKNOWN,
                 failure_code="read_back_failed",
             )
 
         state = self._snapshot(observed)
-        applied = self.profile.decode(observed).get(datapoint)
-        if applied == value:
+        if self.profile.decode(observed).get(datapoint) == value:
             return ProviderCommandResult(outcome=CommandOutcome.APPLIED, state=state)
         return ProviderCommandResult(
             outcome=CommandOutcome.UNKNOWN,
             state=state,
             failure_code="not_confirmed_by_device",
         )
+
+    async def _confirm(self, datapoint: Datapoint, value: int | bool) -> bytes | None:
+        """Read back until the controller reflects the change, or give up.
+
+        Controllers take a moment to update the block they report, so judging
+        the outcome on a single immediate read calls a successful change
+        unknown. Reading is idempotent and therefore safe to repeat; the
+        control request itself is never repeated.
+
+        Returns the last block read, or None if nothing could be read at all.
+        """
+        latest: bytes | None = None
+        for attempt in range(self.confirm_attempts):
+            if attempt:
+                await asyncio.sleep(self.confirm_delay_seconds)
+            try:
+                latest = await self._read_payload()
+            except ProviderUnavailableError:
+                continue
+            if self.profile.decode(latest).get(datapoint) == value:
+                return latest
+        return latest
 
     def _value_for(
         self,

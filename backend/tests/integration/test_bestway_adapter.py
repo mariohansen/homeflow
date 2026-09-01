@@ -280,6 +280,7 @@ def test_a_control_the_device_ignores_settles_as_unknown() -> None:
             controller(honour_writes=False) as sim,
             connected(sim, observed(Datapoint.BUBBLES)) as pool,
         ):
+            pool.confirm_delay_seconds = 0.02
             result = await pool.execute(airjet_ref(), bubbles_command(on=True))
             return result.outcome, result.failure_code
 
@@ -333,3 +334,43 @@ def test_a_setpoint_is_written_in_the_unit_the_controller_uses() -> None:
 
     # 38 C is a little over 100 F, and the controller is addressed in its own unit.
     assert run(scenario()) == 100
+
+
+def test_a_controller_that_reports_late_is_still_confirmed() -> None:
+    """Judging on a single immediate read calls a successful change unknown.
+
+    The controller acts, but its status block catches up a moment later. The
+    read-back waits for that; it never repeats the control request.
+    """
+
+    async def scenario() -> tuple[CommandOutcome, bool | None, int]:
+        async with (
+            controller(reflect_after_reads=3) as sim,
+            connected(sim, observed(Datapoint.BUBBLES)) as pool,
+        ):
+            provider = pool
+            provider.confirm_delay_seconds = 0.05
+            result = await provider.execute(airjet_ref(), bubbles_command(on=True))
+            state = result.state.state if result.state else None
+            return result.outcome, state.bubbles if state else None, sim.write_count
+
+    outcome, bubbles, writes = run(scenario())
+    assert outcome is CommandOutcome.APPLIED
+    assert bubbles is True
+    assert writes == 1, "the control request must not be repeated"
+
+
+def test_a_controller_that_never_reflects_still_settles_as_unknown() -> None:
+    async def scenario() -> tuple[CommandOutcome, str | None]:
+        async with (
+            controller(honour_writes=False) as sim,
+            connected(sim, observed(Datapoint.BUBBLES)) as pool,
+        ):
+            pool.confirm_delay_seconds = 0.02
+            pool.confirm_attempts = 3
+            result = await pool.execute(airjet_ref(), bubbles_command(on=True))
+            return result.outcome, result.failure_code
+
+    outcome, failure = run(scenario())
+    assert outcome is CommandOutcome.UNKNOWN
+    assert failure == "not_confirmed_by_device"

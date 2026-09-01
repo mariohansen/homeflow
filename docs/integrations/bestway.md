@@ -339,7 +339,13 @@ than the layout expects. Re-run the probe and check the real length.
 Capabilities are what the client renders from, so an unreleased control is
 absent rather than broken.
 
-**Commands settle as `UNKNOWN`.** The controller acknowledged at the transport
-level but the read-back did not show the change. Either the write format differs
-on your model, or the offset is wrong. Do not work around it by ignoring the
+**Commands settle as `UNKNOWN` while the function does change physically.**
+The controller acted but its status block had not caught up when the gateway
+read it back. The read-back already retries for several seconds; if your
+controller is slower than that, say so rather than widening the window blindly,
+because the same symptom also appears when a write genuinely does nothing.
+
+**Commands settle as `UNKNOWN` and nothing happens physically.** The control
+request is not reaching the controller in a form it accepts. Run the probe with
+`--diagnose` and check the layout. Do not work around it by ignoring the
 read-back.
