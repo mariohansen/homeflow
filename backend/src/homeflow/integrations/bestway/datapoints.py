@@ -268,7 +268,10 @@ CANDIDATE_PROFILE = DatapointProfile(
 #:  * bits 0 and 6 were set throughout and remain unexplained.
 AIRJET_19BYTE_PROFILE = DatapointProfile(
     name="airjet-19byte",
-    provenance="observed against a physical controller, one button at a time",
+    provenance=(
+        "observed against a physical controller: bits by button press, "
+        "temperature range read off the panel"
+    ),
     minimum_payload_length=19,
     locations={
         # Byte 0 is the message type and flips between request and report, so
@@ -285,16 +288,22 @@ AIRJET_19BYTE_PROFILE = DatapointProfile(
     control_values_offset=1,
     control_values_length=14,
     # Which bit of the control request's attribute flags names each datapoint.
-    # TARGET_TEMPERATURE is deliberately absent: its flag bit is not known, so
-    # releasing it for writing fails rather than guessing.
+    # Flags follow the order the attributes are declared in, and the first seven
+    # are the booleans packed into the flag byte, in the same bit order. Four of
+    # those were confirmed by pressing buttons on a controller.
+    #
+    # The setpoint is the eighth attribute and the byte right after the flag
+    # byte in the value block, so bit 7 follows from the ordering rather than
+    # from documentation. It has not been confirmed on hardware; the read-back
+    # is what will settle it, and an unconfirmed write reports UNKNOWN.
     control_flag_bits={
         Datapoint.HEATER: 1,
         Datapoint.FILTER_PUMP: 2,
         Datapoint.BUBBLES: 3,
         Datapoint.CONTROL_PANEL_LOCK: 4,
+        Datapoint.TARGET_TEMPERATURE: 7,
     },
-    # The panel's own limits still have to be read off the device before a
-    # setpoint is ever written; these are the documented AirJet range.
+    # Read off the physical panel by holding each button to its stop.
     target_temperature_min_c=20.0,
     target_temperature_max_c=40.0,
     target_temperature_step_c=1.0,

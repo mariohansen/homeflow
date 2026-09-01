@@ -43,7 +43,7 @@ Two further properties hold regardless of configuration:
 | Command numbers, passcode and login handshake | Confirmed against a physical controller |
 | Control frame (0x0093, sequence, p0 action, attribute flags, values) | From the published protocol description, **not yet confirmed against hardware** |
 | Datapoint offsets in the status block | Product specific. **This is what you verify.** |
-| Temperature range 20–40 °C | A placeholder until your controller's real range is read off the panel |
+| Temperature range | Read off the physical panel per deployment; 20–40 °C on the controller this layout came from |
 
 ## Choosing a layout
 
@@ -94,8 +94,11 @@ Attribute flag bits follow the same order as the flag byte: `power` 0,
 `heat_power` 1, `filter_power` 2, `wave_power` 3, `locked` 4, `earth` 5,
 `temp_set_unit` 6.
 
-**The setpoint's flag bit is not known**, so `TARGET_TEMPERATURE` cannot be
-released on this layout. The configuration refuses it rather than guessing.
+The setpoint is the eighth attribute and sits in the value block right after
+the flag byte, so its flag is **bit 7 by the same ordering**. That one follows
+from the structure rather than from documentation and has not been confirmed on
+hardware. Releasing it is allowed, and the read-back is what settles it: an
+unconfirmed change reports `UNKNOWN` rather than success.
 
 ## Verifying your controller
 

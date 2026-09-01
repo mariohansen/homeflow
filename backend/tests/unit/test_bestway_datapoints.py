@@ -230,13 +230,30 @@ def test_a_control_request_in_the_observed_layout_flags_one_attribute() -> None:
     assert values[1] == 36, "the setpoint travels along unchanged"
 
 
-def test_the_setpoint_cannot_be_released_on_the_observed_layout() -> None:
-    """Its control flag bit is unknown, so releasing it fails at configuration."""
+def test_a_datapoint_without_a_control_flag_bit_cannot_be_released() -> None:
+    """A layout that can read something cannot automatically write it."""
+    without_flags = AIRJET_19BYTE_PROFILE.model_dump()
+    without_flags["control_flag_bits"] = {Datapoint.HEATER: 1}
     with pytest.raises(ValidationError, match="no control flag bit"):
         DatapointProfile.model_validate(
-            AIRJET_19BYTE_PROFILE.model_dump()
-            | {"trusted": True, "writable": frozenset({Datapoint.TARGET_TEMPERATURE})}
+            without_flags | {"trusted": True, "writable": frozenset({Datapoint.BUBBLES})}
         )
+
+
+def test_the_setpoint_is_flagged_as_the_attribute_after_the_booleans() -> None:
+    """Bit 7 follows the attribute order; the read-back is what confirms it."""
+    assert AIRJET_19BYTE_PROFILE.control_flag_bits[Datapoint.TARGET_TEMPERATURE] == 7
+
+    released = DatapointProfile.model_validate(
+        AIRJET_19BYTE_PROFILE.model_dump()
+        | {"trusted": True, "writable": frozenset({Datapoint.TARGET_TEMPERATURE})}
+    )
+    base = airjet19_payload(current_c=27, target_c=36, filter_pump=True)
+    flags, values = released.encode_control(Datapoint.TARGET_TEMPERATURE, 38, base_payload=base)
+
+    assert flags == 1 << 7
+    assert values[1] == 38, "the setpoint sits right after the flag byte"
+    assert values[0] == base[1], "the flag byte is carried over untouched"
 
 
 def test_the_message_type_byte_is_not_treated_as_state() -> None:

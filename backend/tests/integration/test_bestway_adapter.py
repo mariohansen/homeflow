@@ -132,10 +132,24 @@ def test_releasing_a_datapoint_advertises_exactly_that_capability() -> None:
     assert Capability.BUBBLES not in capabilities
 
 
-def test_a_datapoint_without_a_control_flag_bit_cannot_be_released() -> None:
-    """The observed layout has no flag bit for the setpoint, so it stays locked."""
-    with pytest.raises(ValueError, match="no control flag bit"):
-        observed(Datapoint.TARGET_TEMPERATURE)
+def test_releasing_the_setpoint_advertises_it_with_the_verified_range() -> None:
+    async def scenario() -> tuple[tuple[Capability, ...], float | None, float | None]:
+        async with (
+            controller() as sim,
+            connected(sim, observed(Datapoint.TARGET_TEMPERATURE)) as pool,
+        ):
+            device = (await pool.discover_devices())[0]
+            limits = device.constraints
+            return (
+                device.capabilities,
+                limits.target_temperature_min_c,
+                limits.target_temperature_max_c,
+            )
+
+    capabilities, minimum, maximum = run(scenario())
+    assert Capability.TARGET_TEMPERATURE in capabilities
+    # The range an operator read off the physical panel.
+    assert (minimum, maximum) == (20.0, 40.0)
 
 
 # -- reading --------------------------------------------------------------
