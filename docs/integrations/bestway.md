@@ -241,6 +241,26 @@ HOMEFLOW_BESTWAY_WRITE_ENABLED=BUBBLES,FILTER_PUMP
 Valid names: `BUBBLES`, `FILTER_PUMP`, `HEATER`, `TARGET_TEMPERATURE`,
 `CONTROL_PANEL_LOCK`.
 
+### The control panel lock, and a possible one-way door
+
+Whether the panel lock also blocks commands arriving over the network is
+firmware specific and **has not been verified**. On many controllers the lock
+only disables the physical buttons, which is what it is for.
+
+Find out before releasing anything else: lock the panel, then toggle an already
+released control from the app.
+
+* The control still works — the lock covers the buttons only.
+* The command settles as `UNKNOWN` — the lock covers the network too.
+
+The second outcome matters, because it makes `CONTROL_PANEL_LOCK` a trap: locking
+the panel from the app would disable the app's own controls, and unlocking would
+mean walking to the tub. **Do not release `CONTROL_PANEL_LOCK` for writing until
+this is answered**, and do not release it at all if the lock blocks the network.
+
+Keep the panel unlocked while verifying any other capability, so a control that
+does not respond has only one possible explanation.
+
 ### Before releasing the heater
 
 The heater is the one with real physical consequences. Check that your
