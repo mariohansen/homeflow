@@ -38,7 +38,7 @@ from homeflow.integrations.base.models import (
     ProviderEvent,
     ProviderState,
 )
-from homeflow.integrations.bestway.client import BestwayClient
+from homeflow.integrations.bestway.client import BestwayClient, ControllerMisbehaved
 from homeflow.integrations.bestway.datapoints import (
     Datapoint,
     DatapointProfile,
@@ -243,9 +243,7 @@ class BestwayProvider:
             raise ProviderUnavailableError("unknown controller reference")
 
     async def _read_payload(self) -> bytes:
-        if not self.client.is_connected:
-            await self.client.connect()
-        payload = await self.client.read_status()
+        payload = await self._read_with_retry()
         try:
             self.profile.decode(payload)
         except ProfileError as exc:
@@ -264,6 +262,29 @@ class BestwayProvider:
         self._last_payload = payload
         self._availability = Availability.ONLINE
         return payload
+
+    async def _read_with_retry(self) -> bytes:
+        """Read the status block, reconnecting once if the peer hung up.
+
+        Controllers in the field close the connection after an exchange, so a
+        failed read is expected rather than exceptional. Reading is idempotent,
+        which is what makes retrying it safe; no write is ever retried.
+        """
+        attempts = 2
+        for attempt in range(1, attempts + 1):
+            try:
+                if not self.client.is_connected:
+                    await self.client.connect()
+                return await self.client.read_status()
+            except ControllerMisbehaved:
+                # Not a transient hiccup: stop talking to this peer.
+                await self.client.close()
+                raise
+            except ProviderUnavailableError:
+                await self.client.close()
+                if attempt == attempts:
+                    raise
+        raise ProviderUnavailableError("the controller could not be read")  # pragma: no cover
 
     def _snapshot(self, payload: bytes) -> ProviderState:
         return ProviderState(

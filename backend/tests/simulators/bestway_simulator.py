@@ -63,6 +63,8 @@ class BestwaySimulator:
     require_login: bool = True
     #: Send a byte that cannot start a frame, to exercise the client's rejection.
     corrupt_next_response: bool = False
+    #: Hang up after answering, as controllers in the field do.
+    close_after_response: bool = False
 
     _server: asyncio.Server | None = field(default=None, init=False)
     _connections: set[asyncio.StreamWriter] = field(default_factory=set, init=False)
@@ -108,6 +110,8 @@ class BestwaySimulator:
                         else:
                             writer.write(response.encode())
                     await writer.drain()
+                    if self.close_after_response and frame.command == Command.STATUS_REQUEST:
+                        return
         except (ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError):
             return
         finally:

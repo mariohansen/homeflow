@@ -4,7 +4,7 @@ Read-only until the datapoint layout has been verified against the physical
 controller, then one write capability at a time. See docs/integrations/bestway.md.
 """
 
-from homeflow.integrations.bestway.client import BestwayClient
+from homeflow.integrations.bestway.client import BestwayClient, ControllerMisbehaved
 from homeflow.integrations.bestway.datapoints import (
     CANDIDATE_PROFILE,
     Datapoint,
@@ -24,6 +24,7 @@ __all__ = [
     "PROVIDER_NAME",
     "BestwayClient",
     "BestwayProvider",
+    "ControllerMisbehaved",
     "Datapoint",
     "DatapointProfile",
     "ProfileError",

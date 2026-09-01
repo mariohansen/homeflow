@@ -50,6 +50,20 @@ from homeflow.integrations.bestway.protocol import (
 BOOLEAN_MARKS = {True: "on", False: "off"}
 
 
+def redact_hex(data: bytes, secrets: list[bytes]) -> str:
+    """Hex dump with known credentials blanked out.
+
+    The passcode is a device credential. It is weak by design in this protocol
+    -- any LAN client can ask for it -- but a diagnostic tool still must not put
+    it on screen or into a bug report.
+    """
+    text = data.hex(" ")
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret.hex(" "), " ".join(["xx"] * len(secret)))
+    return text
+
+
 def hex_dump(payload: bytes) -> str:
     lines = []
     for start in range(0, len(payload), 8):
@@ -132,7 +146,18 @@ async def probe(args: argparse.Namespace) -> int:
     previous: bytes | None = None
     try:
         while True:
-            payload = await client.read_status()
+            try:
+                if not client.is_connected:
+                    await client.connect()
+                payload = await client.read_status()
+            except Exception as exc:
+                # Some controllers close the connection after every exchange.
+                await client.close()
+                if not args.watch:
+                    print(f"the connection failed: {exc}")
+                    return 1
+                await asyncio.sleep(args.interval)
+                continue
 
             if previous is None:
                 print(f"status payload ({len(payload)} bytes)")
@@ -181,6 +206,7 @@ async def diagnose(args: argparse.Namespace) -> int:
         return 1
 
     frames = FrameReader()
+    secrets: list[bytes] = []
 
     async def collect(seconds: float, label: str) -> list[Frame]:
         """Read whatever arrives within a window and show it verbatim."""
@@ -203,13 +229,23 @@ async def diagnose(args: argparse.Namespace) -> int:
             print(f"  {label}: nothing received")
             return []
 
-        print(f"  {label}: {len(received)} bytes")
-        print(f"    raw   : {received.hex(' ')}")
+        # Parse before printing, so a credential can be blanked out of the dump.
         try:
             parsed = frames.feed(bytes(received))
         except ProtocolError as exc:
+            print(f"  {label}: {len(received)} bytes")
+            print(f"    raw   : {redact_hex(bytes(received), secrets)}")
             print(f"    frames: cannot be framed as this protocol ({exc})")
             return []
+
+        for frame in parsed:
+            if frame.command == Command.PASSCODE_RESPONSE:
+                secrets.append(frame.payload)
+                with contextlib.suppress(ProtocolError):
+                    secrets.append(decode_length_prefixed(frame.payload))
+
+        print(f"  {label}: {len(received)} bytes")
+        print(f"    raw   : {redact_hex(bytes(received), secrets)}")
         if not parsed:
             print("    frames: no complete frame yet (unexpected framing?)")
         for frame in parsed:
@@ -221,7 +257,7 @@ async def diagnose(args: argparse.Namespace) -> int:
         return parsed
 
     async def send(frame: Frame, label: str) -> None:
-        print(f"-> {label}: {frame.encode().hex(' ')}")
+        print(f"-> {label}: {redact_hex(frame.encode(), secrets)}")
         writer.write(frame.encode())
         await writer.drain()
 

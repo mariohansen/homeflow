@@ -307,3 +307,19 @@ def test_a_write_changes_nothing_else_on_the_controller() -> None:
     before, after = run(scenario())
     differing = [index for index, (a, b) in enumerate(zip(before, after, strict=True)) if a != b]
     assert differing == [4]
+
+
+def test_a_controller_that_hangs_up_after_every_read_still_works() -> None:
+    """Controllers in the field close the connection after an exchange."""
+
+    async def scenario() -> list[float | None]:
+        async with (
+            controller(close_after_response=True) as simulator,
+            connected(simulator, profile()) as pool,
+        ):
+            readings = []
+            for _ in range(3):
+                readings.append((await pool.get_state(airjet_ref())).state.current_temperature_c)
+            return readings
+
+    assert run(scenario()) == [24.0, 24.0, 24.0]

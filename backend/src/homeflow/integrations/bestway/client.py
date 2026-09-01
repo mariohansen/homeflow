@@ -36,6 +36,14 @@ DEFAULT_REQUEST_TIMEOUT = 5.0
 DEFAULT_CONNECT_TIMEOUT = 5.0
 
 
+class ControllerMisbehaved(ProviderUnavailableError):
+    """The peer sent something that is not this protocol.
+
+    Distinct from an ordinary connection failure: a dropped connection is worth
+    retrying, a peer that cannot frame correctly is not.
+    """
+
+
 class BestwayClient:
     """One connection to one controller. Not safe to share across tasks."""
 
@@ -201,4 +209,4 @@ class BestwayClient:
             except ProtocolError as exc:
                 # A peer that cannot frame correctly is not one to keep talking to.
                 _logger.warning("bestway.malformed_frame", provider="bestway")
-                raise ProviderUnavailableError("the controller sent a malformed frame") from exc
+                raise ControllerMisbehaved("the controller sent a malformed frame") from exc
