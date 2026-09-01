@@ -75,10 +75,18 @@ eventually a door lock on the open internet.
 3. In the Tailscale admin console, enable **MagicDNS** and **HTTPS
    certificates** for the tailnet.
 
-Now pick a hostname for the gateway host. Enabling HTTPS certificates publishes
-that name to public certificate transparency logs, so it must not contain a
-resident's name, the address, or anything else identifying. Something flat like
-`hub` is right; your surname is not.
+Now pick a hostname for the gateway host, **before** anything issues a
+certificate. Enabling HTTPS publishes that name to public certificate
+transparency logs, permanently, so it must not contain a resident's name, the
+address, or anything else identifying. Something flat like `hub` is right; a
+first name is not.
+
+```bash
+tailscale set --hostname=hub
+```
+
+Renaming afterwards does not remove the old name from the logs, so this is the
+one step worth getting right the first time.
 
 ### HTTPS inside the tailnet
 
@@ -110,8 +118,9 @@ HOMEFLOW_DEMO_MODE=false
 HOMEFLOW_API_HOST=127.0.0.1
 HOMEFLOW_API_PORT=8000
 
-# The Host header Serve forwards. A wildcard is refused in production because a
-# permissive Host check is what makes DNS rebinding work.
+# The Host header Serve forwards: the bare MagicDNS name, with no port and no
+# trailing dot. A wildcard is refused in production because a permissive Host
+# check is what makes DNS rebinding work.
 HOMEFLOW_ALLOWED_HOSTS=hub.example-tailnet.ts.net,127.0.0.1,localhost
 
 HOMEFLOW_ID_SALT=<generate with scripts/generate_secret.py>
@@ -156,6 +165,26 @@ anyway, but a restart loses the activity log.
 
 **Backups.** Once there is a database, back it up and encrypt it. Until then the
 only thing worth keeping is `.env`, and it belongs nowhere near the repository.
+
+**Nothing restarts the gateway for you on a workstation.** Serve survives a
+reboot; the gateway does not. On an always-on host, Compose's
+`restart: unless-stopped` is what closes that gap, which is the practical reason
+the laptop is a trial rather than a home.
+
+### Confirming the Host header before you rely on it
+
+A mismatch here shows up as a bare `400` with nothing in the log to explain it.
+Rather than guess, point Serve at something that echoes the header, read it, and
+point Serve back:
+
+```bash
+tailscale serve --bg http://127.0.0.1:8099   # a throwaway server that prints Host
+curl https://hub.example-tailnet.ts.net/
+tailscale serve --bg http://127.0.0.1:8000   # back to the gateway
+```
+
+Path-based mounts (`--set-path`) do not reliably take precedence over a root
+proxy, so swapping the root is the dependable way to do this.
 
 ## 4. Checking it works
 
