@@ -53,11 +53,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The official image, pinned. The gitleaks GitHub Action is avoided on
+      # purpose: it fails the job trying to upload a report that gitleaks does
+      # not write when there is nothing to report, and it is one more
+      # third-party action with access to the workflow.
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: safe.directory
+          GIT_CONFIG_VALUE_0: /repo
+        run: |
+          docker run --rm             -e GIT_CONFIG_COUNT -e GIT_CONFIG_KEY_0 -e GIT_CONFIG_VALUE_0             -v "${{ github.workspace }}:/repo"             zricethezav/gitleaks:v8.24.3             detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner --verbose
 
   dependencies:
     name: Dependency audit

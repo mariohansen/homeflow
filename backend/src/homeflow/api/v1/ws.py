@@ -88,12 +88,16 @@ async def stream(websocket: WebSocket) -> None:
 
     with container.bus.subscribe() as subscription:
         sender = asyncio.create_task(_forward(websocket, subscription, container))
-        receiver = asyncio.create_task(_receive(websocket, inbound_budget, session))
-        _, pending = await asyncio.wait({sender, receiver}, return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
+        receiver = asyncio.create_task(_receive(websocket, inbound_budget, session, subscription))
+        # Neither task is cancelled: the reader closes the subscription when the
+        # peer goes away, which ends the writer through its own iterator. The
+        # handler therefore returns in the same wake-up as the disconnect
+        # instead of needing extra scheduling hops to unwind a cancellation.
+        await asyncio.wait({sender, receiver})
         # Retrieve every outcome so no task exception is left unobserved.
-        await asyncio.gather(sender, receiver, return_exceptions=True)
+        for task in (sender, receiver):
+            with contextlib.suppress(*_PEER_GONE, asyncio.CancelledError):
+                task.result()
 
     if session.close_code is not None:
         with contextlib.suppress(*_PEER_GONE):
@@ -161,30 +165,41 @@ def _frame(event: DomainEvent, container: Container) -> dict[str, Any]:
     return frame
 
 
-async def _receive(websocket: WebSocket, budget: RateLimiter, session: _Session) -> None:
+async def _receive(
+    websocket: WebSocket,
+    budget: RateLimiter,
+    session: _Session,
+    subscription: Subscription,
+) -> None:
     """Accept only heartbeat traffic from the client.
 
     The stream is read-only by design: commands go through the audited HTTP
     pipeline, never through the socket. This task never writes to the socket; it
     records the close code and lets ``stream`` do the closing.
+
+    On the way out it closes the subscription, which is what lets the writer
+    finish by itself rather than having to be cancelled.
     """
-    while True:
-        try:
-            raw = await websocket.receive_text()
-        except _PEER_GONE:
-            # A client closing the tab is normal, not an error.
-            return
+    try:
+        while True:
+            try:
+                raw = await websocket.receive_text()
+            except _PEER_GONE:
+                # A client closing the tab is normal, not an error.
+                return
 
-        if not budget.allow("inbound") or len(raw) > _MAX_INBOUND_BYTES:
-            session.close_code = _CLOSE_POLICY_VIOLATION
-            return
+            if not budget.allow("inbound") or len(raw) > _MAX_INBOUND_BYTES:
+                session.close_code = _CLOSE_POLICY_VIOLATION
+                return
 
-        try:
-            message = json.loads(raw)
-        except json.JSONDecodeError:
-            session.close_code = _CLOSE_POLICY_VIOLATION
-            return
+            try:
+                message = json.loads(raw)
+            except json.JSONDecodeError:
+                session.close_code = _CLOSE_POLICY_VIOLATION
+                return
 
-        if not isinstance(message, dict) or message.get("type") not in _ACCEPTED_INBOUND_TYPES:
-            session.close_code = _CLOSE_POLICY_VIOLATION
-            return
+            if not isinstance(message, dict) or message.get("type") not in _ACCEPTED_INBOUND_TYPES:
+                session.close_code = _CLOSE_POLICY_VIOLATION
+                return
+    finally:
+        subscription.close()
