@@ -1,0 +1,55 @@
+# HomeFlow secret-scanning configuration.
+# Extends the gitleaks default rule set with household/provider specific rules.
+title = "HomeFlow"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "home-assistant-long-lived-token"
+description = "Home Assistant long-lived access token (JWT)"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+tags = ["home-assistant", "token"]
+
+[[rules]]
+id = "tailscale-auth-key"
+description = "Tailscale auth key or node key"
+regex = '''(?i)\b(tskey-(auth|client|api)-[A-Za-z0-9]{6,}|nodekey:[0-9a-f]{40,})'''
+tags = ["tailscale", "key"]
+
+[[rules]]
+id = "apns-auth-key"
+description = "Apple APNs .p8 signing key material"
+regex = '''-----BEGIN PRIVATE KEY-----'''
+tags = ["apple", "apns"]
+
+[[rules]]
+id = "household-mac-address"
+description = "MAC address (may identify household hardware)"
+regex = '''\b(?!02:00:00:00:00)(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b'''
+tags = ["privacy", "identifier"]
+
+[[rules]]
+id = "private-lan-address"
+description = "Private LAN address (use RFC 5737 documentation ranges instead)"
+regex = '''\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'''
+tags = ["privacy", "network"]
+
+[allowlist]
+description = "Documentation placeholders and synthetic examples"
+paths = [
+  '''\.gitleaks\.toml$''',
+  '''CLAUDE\.md$''',
+  '''docs/security/privacy-model\.md$''',
+  # Detection rules and the tests that prove redaction works contain the
+  # synthetic patterns they are meant to catch.
+  '''backend/src/homeflow/log\.py$''',
+  '''backend/tests/unit/test_log_redaction\.py$''',
+]
+regexes = [
+  '''replace-me''',
+  '''192\.0\.2\.\d{1,3}''',
+  '''198\.51\.100\.\d{1,3}''',
+  '''203\.0\.113\.\d{1,3}''',
+  '''02:00:00:00:00:0\d''',
+]

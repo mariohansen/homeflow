@@ -1,0 +1,51 @@
+# HomeFlow — home gateway stack.
+#
+# Security notes:
+#   * Ports are published on the loopback interface only. Remote access is
+#     provided by the private VPN overlay (Tailscale/WireGuard), never by a
+#     router port-forward. See docs/security/threat-model.md.
+#   * Secrets come from an untracked .env file, never from this YAML.
+#   * PostgreSQL is not reachable from outside the compose network.
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: ../infrastructure/docker/api.Dockerfile
+    env_file: [.env]
+    environment:
+      HOMEFLOW_API_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Reserved for Phase 2+. The current vertical slice keeps state in memory;
+  # see docs/adr/0009-deferred-persistence.md.
+  db:
+    image: postgres:17-alpine
+    env_file: [.env]
+    environment:
+      POSTGRES_DB: homeflow
+      POSTGRES_USER: homeflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - homeflow-db:/var/lib/postgresql/data
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U homeflow -d homeflow"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  homeflow-db:

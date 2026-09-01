@@ -1,0 +1,77 @@
+[project]
+name = "homeflow"
+version = "0.1.0"
+description = "HomeFlow home gateway — canonical smart-home API for one private household"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+  "fastapi>=0.115",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.5",
+  "uvicorn[standard]>=0.32",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "httpx>=0.27",
+  "ruff>=0.14",
+  "pyright>=1.1.400",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/homeflow"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "F", "W",      # pycodestyle / pyflakes
+  "I",                 # import sorting
+  "UP",                # pyupgrade
+  "B",                 # bugbear
+  "ASYNC",             # async correctness
+  "S",                 # bandit security rules
+  "C4", "SIM", "RET",  # comprehension / simplification
+  "TID",               # tidy imports
+  "RUF",
+]
+ignore = [
+  "S104",  # binding 0.0.0.0 is a deployment decision, guarded in settings
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]  # asserts and dummy credentials are expected in tests
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[tool.pyright]
+include = ["src", "tests"]
+# uv creates the environment here; CI uses the same layout.
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+reportMissingImports = "error"
+reportUnusedImport = "warning"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+  "hardware: touches real hardware; never runs in CI",
+  "requires_bestway: requires a physical Bestway AirJet controller",
+  "requires_home_assistant: requires a reachable Home Assistant instance",
+  "requires_nuki: requires a physical Nuki lock",
+  "requires_miele: requires Miele cloud credentials",
+  "requires_ring: requires Ring cloud credentials",
+]

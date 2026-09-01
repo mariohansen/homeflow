@@ -1,0 +1,82 @@
+# ---------------------------------------------------------------------------
+# HomeFlow — public repository.
+# Anything that could identify the household or grant access MUST stay out.
+# ---------------------------------------------------------------------------
+
+# Secrets and runtime configuration
+.env
+.env.*
+!.env.example
+*.env
+secrets/
+*.key
+*.pem
+*.p8
+*.p12
+*.pfx
+*.crt
+*.jks
+*.keystore
+auth_key*
+tailscale.state
+*.tsstate
+
+# Household / provider data that must never be public
+household/
+private/
+captures/
+raw-payloads/
+*.pcap
+*.pcapng
+*.har
+*.dump
+*.sql.gz
+backups/
+!infrastructure/backups/README.md
+snapshots/
+
+# Local logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+coverage.xml
+htmlcov/
+uv.lock.local
+
+# Node (tooling only)
+node_modules/
+
+# Xcode / Swift (client, whenever a macOS toolchain exists)
+*.xcuserstate
+xcuserdata/
+DerivedData/
+.build/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+*.ipa
+*.dSYM.zip
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Screenshots: only reviewed demo-mode assets may be added explicitly
+screenshots/
+docs/diagrams/*.local.*
