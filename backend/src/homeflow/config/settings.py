@@ -15,6 +15,8 @@ from typing import Annotated, Self
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from homeflow.integrations.home_assistant.entities import RELEASABLE_DOMAINS
+
 #: Fixed, deliberately public salt used for demo-mode device identifiers so that
 #: screenshots, fixtures and tests are reproducible. Synthetic data only.
 DEMO_ID_SALT = "homeflow-demo-mode-public-salt"
@@ -75,6 +77,38 @@ class Settings(BaseSettings):
     #: for ``apps/web`` next to the backend and serves it if present.
     web_client_dir: Path | None = None
 
+    # -- Home Assistant -----------------------------------------------------
+    #: Home Assistant is an integration gateway, not the security boundary. Its
+    #: address is administrator configuration and is never accepted from a
+    #: request (see docs/adr/0004-home-assistant-as-integration-gateway.md).
+    home_assistant_enabled: bool = False
+    home_assistant_base_url: str | None = None
+    #: A long-lived access token belonging to a HomeFlow-only Home Assistant
+    #: user, not to a personal administrator account.
+    home_assistant_token: SecretStr | None = None
+    home_assistant_timeout_seconds: float = Field(default=10.0, gt=0.0, le=60.0)
+    #: Entity domains released for writing, after their effect was checked on
+    #: the real devices. Comma separated, e.g. "light,switch". Empty means the
+    #: adapter is read-only, which is where every integration starts.
+    home_assistant_write_enabled: Annotated[tuple[str, ...], NoDecode] = ()
+
+    # -- Timers -------------------------------------------------------------
+    #: Ceiling for a one-shot timer. A timer is the only thing that writes to a
+    #: device unattended, so how far ahead that can be scheduled is configuration.
+    schedule_max_hours: float = Field(default=24.0, gt=0.0, le=48.0)
+    #: How often due timers are looked for. Also the worst-case lateness.
+    schedule_tick_seconds: float = Field(default=20.0, ge=1.0, le=300.0)
+
+    # -- Outdoor temperature ----------------------------------------------
+    #: Off by default: it reaches a service outside the household.
+    weather_enabled: bool = False
+    #: Where to ask about. This says where someone lives, so it belongs in the
+    #: untracked configuration and never in the repository.
+    weather_latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
+    weather_longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
+    weather_poll_seconds: float = Field(default=900.0, ge=300.0, le=21600.0)
+    weather_display_name: str = "Outdoor"
+
     # -- Bestway AirJet ---------------------------------------------------
     #: Off by default: the adapter talks to real hardware.
     bestway_enabled: bool = False
@@ -96,7 +130,12 @@ class Settings(BaseSettings):
     demo_tick_seconds: float = Field(default=2.0, gt=0.0)
     demo_failure_rate: float = Field(default=0.0, ge=0.0, le=1.0)
 
-    @field_validator("allowed_hosts", "bestway_write_enabled", mode="before")
+    @field_validator(
+        "allowed_hosts",
+        "bestway_write_enabled",
+        "home_assistant_write_enabled",
+        mode="before",
+    )
     @classmethod
     def _split_list(cls, value: object) -> object:
         """Accept a comma-separated string, which is how an env var carries a list."""
@@ -122,6 +161,35 @@ class Settings(BaseSettings):
                     "HOMEFLOW_ALLOWED_HOSTS must list the exact private hostnames the "
                     "gateway answers on; a wildcard enables DNS rebinding."
                 )
+        if self.weather_enabled and (
+            self.weather_latitude is None or self.weather_longitude is None
+        ):
+            raise ValueError(
+                "HOMEFLOW_WEATHER_LATITUDE and HOMEFLOW_WEATHER_LONGITUDE are required "
+                "when the outdoor temperature is enabled"
+            )
+        if self.home_assistant_enabled and not (
+            self.home_assistant_base_url and self.home_assistant_token
+        ):
+            raise ValueError(
+                "HOMEFLOW_HOME_ASSISTANT_BASE_URL and HOMEFLOW_HOME_ASSISTANT_TOKEN are "
+                "required when the Home Assistant adapter is enabled"
+            )
+        unreleasable = set(self.home_assistant_write_enabled) - RELEASABLE_DOMAINS
+        if unreleasable:
+            # Naming lock here is refused rather than ignored: an operator who
+            # wrote it down believed it would work.
+            raise ValueError(
+                "HOMEFLOW_HOME_ASSISTANT_WRITE_ENABLED may not contain "
+                f"{', '.join(sorted(unreleasable))}. Releasable domains are "
+                f"{', '.join(sorted(RELEASABLE_DOMAINS))}; door control needs the fresh "
+                "device-owner authorisation described in SECURITY.md."
+            )
+        if self.home_assistant_enabled and self.demo_mode:
+            raise ValueError(
+                "Demo mode must not run alongside the Home Assistant adapter: a demo "
+                "build must not be able to reach real devices."
+            )
         if self.bestway_enabled and not self.bestway_host:
             raise ValueError("HOMEFLOW_BESTWAY_HOST is required when the adapter is enabled")
         if self.bestway_write_enabled and not self.bestway_trust_profile:

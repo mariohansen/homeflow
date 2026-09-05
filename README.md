@@ -1,81 +1,85 @@
 # HomeFlow
 
-One coherent interface for a household that is spread across a dozen vendor
-apps. HomeFlow is a **local-first home gateway** plus an installable web client:
-the gateway normalises Philips Hue, Sonos, Nuki, Bestway AirJet, Ring, tado°,
-Miele and Alexa into a single canonical API, and the client only ever speaks
-that API.
+Eine zusammenhängende Oberfläche für einen Haushalt, der sich sonst auf ein
+Dutzend Hersteller-Apps verteilt. HomeFlow besteht aus einem **lokal
+arbeitenden Gateway** und einem installierbaren Web-Client: Das Gateway
+übersetzt Philips Hue, Sonos, Nuki, Bestway AirJet, Ring, tado°, Miele und Alexa
+in eine einzige kanonische API — und der Client spricht ausschließlich diese
+API.
 
-> **This repository contains no household data.** Every device, room, address and
-> identifier you can see here is synthetic. Configuration, credentials and
-> network topology live outside Git. See [Privacy model](docs/security/privacy-model.md).
+> **Dieses Repository enthält keine Haushaltsdaten.** Jedes Gerät, jeder Raum,
+> jede Adresse und jede Kennung, die hier zu sehen ist, ist erfunden.
+> Konfiguration, Zugangsdaten und Netzwerktopologie liegen außerhalb von Git.
+> Siehe [Datenschutzmodell](docs/security/privacy-model.md).
 
 ---
 
-## The problem
+## Das Problem
 
-Controlling one home currently means remembering which app owns which device —
-one app to warm the hot tub, another for the lights, a third for the door, a
-fourth to see whether the washing machine is done. Each app has its own
-conventions, its own login and its own idea of what "on" means.
+Ein Zuhause zu bedienen heißt derzeit, sich zu merken, welche App welches Gerät
+besitzt — eine App für den Whirlpool, eine zweite für das Licht, eine dritte für
+die Tür, eine vierte, um zu sehen, ob die Waschmaschine fertig ist. Jede App hat
+eigene Konventionen, eigene Anmeldung und eine eigene Vorstellung davon, was
+„an" bedeutet.
 
-HomeFlow's goal is concrete rather than architectural:
+Das Ziel von HomeFlow ist konkret statt architektonisch:
 
-> Everyday use of the Bestway AirJet, the lights, the speakers and the door
-> should happen in one app, on a phone, without opening a vendor app.
+> Der Alltag mit Whirlpool, Licht, Lautsprechern und Tür soll in einer App auf
+> dem Telefon stattfinden, ohne eine Hersteller-App zu öffnen.
 
-## Architecture
+## Architektur
 
-The client never talks to a vendor API or an IoT device. Everything goes through
-the gateway, which holds the credentials, speaks the local protocols and turns
-vendor-specific behaviour into one vocabulary.
+Der Client spricht nie mit einer Hersteller-API oder einem IoT-Gerät. Alles läuft
+über das Gateway: Es hält die Zugangsdaten, spricht die lokalen Protokolle und
+übersetzt herstellerspezifisches Verhalten in ein gemeinsames Vokabular.
 
 ```mermaid
 flowchart LR
-    CLIENT["Web client<br/>iPhone home screen"]
-    VPN["Private encrypted overlay<br/>Tailscale / WireGuard"]
-    GATEWAY["HomeFlow gateway<br/>FastAPI + client"]
-    LOCAL["Local devices<br/>pool, lights, speakers, lock"]
-    CLOUD["Vendor clouds<br/>appliances, doorbell, climate"]
+    CLIENT["Web-Client<br/>iPhone-Startbildschirm"]
+    VPN["Privates verschlüsseltes Netz<br/>Tailscale / WireGuard"]
+    GATEWAY["HomeFlow-Gateway<br/>FastAPI + Client"]
+    LOCAL["Lokale Geräte<br/>Pool, Licht, Lautsprecher, Schloss"]
+    CLOUD["Hersteller-Clouds<br/>Hausgeräte, Türklingel, Klima"]
 
     CLIENT --> VPN --> GATEWAY
     GATEWAY --> LOCAL
     GATEWAY --> CLOUD
 ```
 
-Why a gateway at all:
+Warum überhaupt ein Gateway:
 
-- vendor credentials never reach a phone;
-- local-only protocols stay on the local network;
-- one place for authorisation, audit and rate limiting;
-- one place that decides what a device can actually do;
-- an adapter can be replaced without touching the client.
+- Hersteller-Zugangsdaten erreichen nie ein Telefon;
+- rein lokale Protokolle bleiben im lokalen Netz;
+- eine Stelle für Autorisierung, Prüfprotokoll und Ratenbegrenzung;
+- eine Stelle, die entscheidet, was ein Gerät tatsächlich kann;
+- ein Adapter lässt sich austauschen, ohne den Client anzufassen.
 
-Inside, it is a modular monolith — one deployable service with firm internal
-boundaries, not a microservice constellation.
+Innen ist es ein modularer Monolith — ein auslieferbarer Dienst mit klaren
+inneren Grenzen, keine Microservice-Landschaft.
 
 ```mermaid
 flowchart LR
-    API["HTTP / WebSocket"] --> AUTH["Auth"]
-    API --> DOMAIN["Canonical domain"]
-    API --> CMD["Command pipeline"]
-    CMD --> ADAPTERS["Provider adapters"]
-    ADAPTERS --> EVENTS["Event bus"]
+    API["HTTP / WebSocket"] --> AUTH["Authentifizierung"]
+    API --> DOMAIN["Kanonische Domäne"]
+    API --> CMD["Befehlspipeline"]
+    CMD --> ADAPTERS["Adapter"]
+    ADAPTERS --> EVENTS["Ereignisbus"]
     EVENTS --> DOMAIN
-    CMD --> AUDIT["Audit"]
+    CMD --> AUDIT["Prüfprotokoll"]
 ```
 
-## Capabilities, not vendors
+## Fähigkeiten statt Hersteller
 
-A device is described by what it can actually do. The client renders controls
-from capabilities, so an unverified feature simply does not appear.
+Ein Gerät wird darüber beschrieben, was es tatsächlich kann. Der Client baut
+seine Bedienelemente aus diesen Fähigkeiten (*capabilities*) — eine ungeprüfte
+Funktion taucht schlicht nicht auf.
 
 ```json
 {
   "id": "3f1c8e42-0000-4000-8000-000000000000",
-  "displayName": "Demo Pool",
+  "displayName": "Demo-Pool",
   "kind": "POOL",
-  "roomName": "Terrace",
+  "roomName": "Terrasse",
   "capabilities": ["CURRENT_TEMPERATURE", "TARGET_TEMPERATURE", "HEATING", "FILTER", "BUBBLES"],
   "state": { "currentTemperatureC": 24.5, "targetTemperatureC": 36.0, "heater": false },
   "constraints": { "targetTemperatureMinC": 20.0, "targetTemperatureMaxC": 40.0 },
@@ -83,155 +87,189 @@ from capabilities, so an unverified feature simply does not appear.
 }
 ```
 
-Capability limits such as the temperature range come from the adapter, which
-gets them from the verified device — never from a guess in the API layer.
+Grenzwerte wie der Temperaturbereich kommen vom Adapter, der sie vom geprüften
+Gerät hat — nie aus einer Annahme in der API-Schicht.
 
-## Every mutation takes the same path
+## Jede Änderung nimmt denselben Weg
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant API as Gateway
     participant P as Adapter
-    participant D as Device
+    participant D as Gerät
 
     C->>API: POST /v1/devices/{id}/commands
-    API->>API: authenticate, capability, range, risk class
-    API->>API: audit PENDING
-    API->>P: execute with timeout
-    P->>D: local or vendor command
-    D-->>P: result
-    P-->>API: normalised outcome
-    API->>C: settled command
-    API-->>C: WebSocket state event
+    API->>API: Authentifizierung, Fähigkeit, Bereich, Risikoklasse
+    API->>API: Prüfprotokoll PENDING
+    API->>P: Ausführung mit Zeitlimit
+    P->>D: lokaler oder Hersteller-Befehl
+    D-->>P: Ergebnis
+    P-->>API: normalisiertes Ergebnis
+    API->>C: abgeschlossener Befehl
+    API-->>C: WebSocket-Zustandsereignis
 ```
 
-A timeout is never reported as a failure. A physical device can act after the
-gateway stopped waiting, so the gateway reads state back once and reports
-`SUCCEEDED` or `UNKNOWN` — it never repeats a physical write on its own.
+Eine Zeitüberschreitung wird nie als Fehlschlag gemeldet. Ein physisches Gerät
+kann handeln, nachdem das Gateway aufgehört hat zu warten — deshalb liest das
+Gateway den Zustand einmal zurück und meldet `SUCCEEDED` oder `UNKNOWN`. Einen
+physischen Schreibvorgang wiederholt es niemals von sich aus.
 
-## Security principles
+## Sicherheitsprinzipien
 
-| Principle | How it shows up in the code |
+| Prinzip | Wie es im Code auftaucht |
 | --- | --- |
-| No public ingress | No port-forward, no Tailscale Funnel; loopback binding by default |
-| Network access is not authorisation | Every `/v1` route resolves a registered client |
-| Capabilities authorise actions | A command is refused unless the device declares the capability |
-| Risk classes | `LOW` / `MEDIUM` / `HIGH`; unlocking is always `HIGH` |
-| High-risk actions are gated | Refused until the fresh device-owner authorisation flow exists |
-| Device limits are the device's | Setpoints are checked against adapter-declared constraints |
-| Bounded everything | Timeouts, queues, rate limits, retained commands |
-| Nothing leaks in errors | Problem details carry a stable type and a correlation id, never internals |
-| Nothing leaks in logs | Central redaction of credentials and household identifiers, unit-tested |
+| Kein öffentlicher Zugang von außen | Keine Portweiterleitung, kein Tailscale Funnel; standardmäßig nur Loopback |
+| Netzwerkzugang ist keine Autorisierung | Jede `/v1`-Route löst einen registrierten Client auf |
+| Fähigkeiten autorisieren Aktionen | Ein Befehl wird abgelehnt, wenn das Gerät die Fähigkeit nicht führt |
+| Risikoklassen | `LOW` / `MEDIUM` / `HIGH`; Entriegeln ist immer `HIGH` |
+| Hochriskante Aktionen sind gesperrt | Abgelehnt, bis die frische Geräte-Freigabe per Face ID existiert |
+| Gerätegrenzen gehören dem Gerät | Sollwerte werden gegen die vom Adapter gemeldeten Grenzen geprüft |
+| Alles ist begrenzt | Zeitlimits, Warteschlangen, Ratenbegrenzung, aufbewahrte Befehle |
+| Fehler verraten nichts | Problemdokumente tragen Typ und Korrelations-ID, nie Interna |
+| Protokolle verraten nichts | Zentrale Schwärzung von Zugangsdaten und Haushaltskennungen, per Test abgesichert |
 
-Details: [SECURITY.md](SECURITY.md), [threat model](docs/security/threat-model.md).
+Einzelheiten: [SECURITY.md](SECURITY.md),
+[Bedrohungsmodell](docs/security/threat-model.md).
 
-## Integration status
+## Stand der Integrationen
 
-| Integration | Status | Notes |
+| Integration | Stand | Anmerkung |
 | --- | --- | --- |
-| Demo (synthetic) | Working | Pool, lights, speaker, lock, appliances |
-| Bestway AirJet | Working | Local Gizwits/GAgent TCP; verified against a physical controller, each control released after its effect was observed |
-| Home Assistant | Planned | REST plus WebSocket, as an integration gateway |
-| Philips Hue | Planned | Via Home Assistant |
-| Sonos | Planned | Via Home Assistant |
-| Nuki | Planned | Blocked on client authentication and the high-risk flow |
-| tado° | Planned | Local Matter path preferred |
-| Miele | Planned | Official OAuth 2.0 third-party API |
-| Ring | Planned | Events first; no video retention |
-| Alexa | Planned | Announcements and selected commands |
+| Demo (synthetisch) | Läuft | Pool, Licht, Lautsprecher, Schloss, Hausgeräte |
+| Bestway AirJet | Läuft | Lokales Gizwits/GAgent-TCP; am physischen Controller verifiziert, jede Steuerung einzeln freigegeben |
+| Außentemperatur | Läuft | Öffentlicher Wetterdienst, nur Koordinaten, sonst nichts |
+| Home Assistant | Gebaut, unverifiziert | Vollständig gegen einen Simulator geprüft; noch an keiner echten Instanz gelaufen |
+| Philips Hue | Über Home Assistant | Wartet auf eine laufende Instanz |
+| Sonos | Über Home Assistant | Wartet auf eine laufende Instanz |
+| tado° | Über Home Assistant | Lokaler Matter-Weg bevorzugt |
+| Nuki | Geplant | Blockiert durch Client-Authentifizierung und die Hochrisiko-Freigabe |
+| Miele | Geplant | Offizielle OAuth-2.0-API |
+| Ring | Geplant | Zuerst Ereignisse; keine Videospeicherung |
+| Alexa | Geplant | Durchsagen und ausgewählte Befehle |
 
-Nothing is marked working until it has been verified against the real device.
+Nichts gilt als „läuft", bevor es gegen das echte Gerät verifiziert wurde.
 
-## The client
+## Der Client
 
-An installable web application, served by the gateway on the same origin, added
-to the iPhone home screen. Same-origin serving is the point: there is no CORS
-configuration and therefore no cross-origin surface, and the WebSocket is
-same-origin too.
+Eine installierbare Web-Anwendung, vom Gateway unter derselben Herkunft
+ausgeliefert und auf dem iPhone-Startbildschirm abgelegt. Dieselbe Herkunft ist
+der Punkt: Es gibt keine CORS-Konfiguration und damit keine
+herkunftsübergreifende Angriffsfläche, und der WebSocket ist ebenfalls
+gleichherkünftig.
 
-It is plain ES modules and hand-written CSS — no bundler, no framework. For a
-handful of screens on a project that controls a door lock, that removes an
-entire dependency tree and lets the Content Security Policy stay strict: no
-inline script, no inline style, no external origin. A unit test enforces all
-three.
+Es sind schlichte ES-Module und handgeschriebenes CSS — kein Bundler, kein
+Framework. Für eine Handvoll Bildschirme in einem Projekt, das ein Türschloss
+steuert, spart das einen ganzen Abhängigkeitsbaum und erlaubt eine strenge
+Content Security Policy: kein eingebettetes Skript, kein eingebetteter Stil,
+keine fremde Herkunft. Ein Test setzt alle drei durch.
 
-What it does:
+Was er tut:
 
-- room-grouped device cards built from **capabilities**, so a control a device
-  cannot perform never appears;
-- pool card with the live water temperature, a setpoint slider bounded by the
-  device's own limits, and heater, filter, bubbles and panel-lock switches;
-- light, speaker, lock and appliance cards;
-- live updates over the WebSocket, with reconnect and an explicit resync when
-  the gateway had to drop events;
-- honest states: offline, stale, pending — and `UNKNOWN` shown as unknown
-  rather than dressed up as success or failure;
-- the unlock control is visibly disabled with the reason, because the gateway
-  refuses high-risk actions until fresh device-owner authorisation exists.
+- nach Räumen gruppierte Gerätekarten, gebaut aus **Fähigkeiten** — eine
+  Steuerung, die ein Gerät nicht beherrscht, erscheint nie;
+- Poolkarte mit rundem Temperaturregler zum Ziehen, Wassertemperatur in der
+  Mitte, Funktionskacheln für Heizung, Filter, Düsen und Bedienfeldsperre;
+- „Zuletzt gefiltert" mit Tag und Uhrzeit, und die aktuelle Außentemperatur;
+- Zeitpläne: „Start in X Stunden" und „Laufzeit X Stunden", mit Countdown und
+  Abbrechen;
+- Karten für Licht, Lautsprecher, Thermostat, Schloss und Hausgeräte;
+- Live-Aktualisierung über WebSocket, mit Wiederverbindung und ausdrücklichem
+  Neuabgleich, wenn das Gateway Ereignisse verwerfen musste;
+- ehrliche Zustände: offline, veraltet, in Arbeit — und `UNKNOWN` wird als
+  unbekannt gezeigt, nicht als Erfolg oder Fehlschlag verkleidet;
+- die Entriegeln-Schaltfläche ist sichtbar gesperrt, mit Begründung, weil das
+  Gateway hochriskante Aktionen bis zur frischen Geräte-Freigabe ablehnt.
 
-Browsers cannot set headers on a WebSocket handshake and a credential must never
-sit in a URL, so the client exchanges its credential for a **single-use ticket
-valid 30 seconds** and presents it through `Sec-WebSocket-Protocol`.
+Browser können bei einem WebSocket-Handschlag keine Kopfzeilen setzen, und ein
+Zugangsschlüssel darf nie in einer URL stehen. Der Client tauscht seinen
+Schlüssel deshalb gegen ein **einmalig gültiges Ticket mit 30 Sekunden
+Lebensdauer** und reicht es über `Sec-WebSocket-Protocol` ein.
 
-The trade-off, recorded in [ADR 0011](docs/adr/0011-installable-web-client.md):
-no widgets, Control Center controls, App Intents, Live Activities or reliable
-background push. Those wait for a native client, which needs a Mac.
+Der Preis dafür, festgehalten in
+[ADR 0011](docs/adr/0011-installable-web-client.md): keine Widgets, keine
+Kontrollzentrum-Bedienelemente, keine App Intents, keine Live-Aktivitäten, kein
+zuverlässiger Hintergrund-Push. Das wartet auf einen nativen Client — und der
+braucht einen Mac.
 
-## Talking to real hardware safely
+## Sicher mit echter Hardware sprechen
 
-The Bestway adapter is the first integration that touches a physical device, and
-its datapoint layout is product specific and undocumented. Writing to the wrong
-offset is how a hot tub gets told to do the wrong thing, so the layout is treated
-as a claim to be proven rather than a fact:
+Der Bestway-Adapter ist die erste Integration, die ein physisches Gerät berührt,
+und sein Datenpunkt-Layout ist produktspezifisch und undokumentiert. An den
+falschen Versatz zu schreiben ist der Weg, einem Whirlpool das Falsche zu sagen.
+Das Layout gilt deshalb als Behauptung, die bewiesen werden muss:
 
-- until an operator confirms the decoded values against the physical panel, the
-  controller is **not exposed as a device at all** — a wrong temperature never
-  reaches a screen;
-- each control is released **individually**, after its effect has been observed;
-- a write is never blind: it is the status block the controller just reported
-  with one field changed;
-- a write is read back, and an unconfirmed change settles as `UNKNOWN`.
+- solange niemand die dekodierten Werte gegen das physische Bedienfeld geprüft
+  hat, wird der Controller **gar nicht erst als Gerät angeboten** — eine falsche
+  Temperatur erreicht nie einen Bildschirm;
+- jede Steuerung wird **einzeln** freigegeben, nachdem ihre Wirkung beobachtet
+  wurde;
+- geschrieben wird nie blind: Es ist der Statusblock, den der Controller gerade
+  gemeldet hat, mit einem geänderten Feld;
+- jeder Schreibvorgang wird zurückgelesen; eine unbestätigte Änderung endet als
+  `UNKNOWN`.
 
-Both gates default to refusing, and a configuration that releases a control
-without a verified layout does not start. The verification procedure, including
-a probe that shows which bit moves when you press a button on the tub, is in
+Beide Tore lehnen im Zweifel ab, und eine Konfiguration, die eine Steuerung ohne
+geprüftes Layout freigibt, startet nicht. Das Prüfverfahren — samt einer Sonde,
+die zeigt, welches Bit sich bewegt, wenn man am Pool eine Taste drückt — steht in
 [docs/integrations/bestway.md](docs/integrations/bestway.md).
 
-The whole stack runs against a synthetic controller, which is what CI uses.
+Der gesamte Stapel läuft auch gegen einen synthetischen Controller; damit prüft
+die CI.
 
-## Demo mode
+## Zeitpläne
 
-Demo mode is a first-class feature, not a test fixture. It serves a complete
-synthetic household — a pool with a real heating curve, a running washing
-machine, and one deliberately offline appliance so that offline handling is
-always visible. It performs no I/O and cannot reach a real device; a unit test
-enforces that.
+Ein Zeitplan ist das Einzige in HomeFlow, das ein Gerät anfasst, während niemand
+zusieht. Er ist bewusst so klein wie möglich gehalten: **eine Funktion, ein
+Zeitpunkt, eine Aktion** — keine Wiederholung, keine Regelketten, keine
+Automatisierungsmaschine.
 
-## Running the gateway locally
+- Nur Heizung und Filterpumpe dürfen auf einen Zeitplan. Eine feste Liste, keine
+  Risikoklassen-Prüfung — eine Tür kann nicht auf einen Timer gelegt werden,
+  egal was ein Client schickt.
+- „Laufzeit" schaltet **sofort ein**, während jemand davorsteht, und legt nur das
+  **Aus** auf den Timer: Die unbeaufsichtigte Hälfte reduziert, was das Gerät
+  tut.
+- Ein Zeitplan schaltet **genau einmal**. Ein Fehlschlag wird protokolliert und
+  der Zeitplan endet; nichts wird wiederholt.
+- Ausgelöst wird über dieselbe Befehlspipeline wie ein Tastendruck — dieselbe
+  Prüfung der Fähigkeit, dieselben Grenzen, dasselbe Prüfprotokoll.
+
+Begründung und Abwägungen: [ADR 0012](docs/adr/0012-one-shot-timers.md).
+
+## Demo-Modus
+
+Der Demo-Modus ist eine vollwertige Funktion, kein Testhilfsmittel. Er liefert
+einen kompletten synthetischen Haushalt — einen Pool mit echter Aufheizkurve,
+eine laufende Waschmaschine und ein absichtlich offline gehaltenes Hausgerät,
+damit der Offline-Fall immer sichtbar ist. Er führt keine Ein-/Ausgabe aus und
+kann kein echtes Gerät erreichen; ein Test setzt das durch.
+
+## Gateway lokal starten
 
 ```bash
 cp .env.example .env
-python scripts/generate_client_token.py        # paste into HOMEFLOW_DEV_CLIENT_TOKEN
-python scripts/generate_secret.py              # paste into HOMEFLOW_ID_SALT
+python scripts/generate_client_token.py        # in HOMEFLOW_DEV_CLIENT_TOKEN eintragen
+python scripts/generate_secret.py              # in HOMEFLOW_ID_SALT eintragen
 
 cd backend
 uv sync --extra dev
 uv run python -m homeflow                      # http://127.0.0.1:8000
 ```
 
-Open `http://127.0.0.1:8000` and paste the access token. The gateway serves both
-the API and the client.
+`http://127.0.0.1:8000` öffnen und den Zugangsschlüssel einfügen. Das Gateway
+liefert API und Client aus.
 
 ```bash
 curl -H "Authorization: Bearer $HOMEFLOW_DEV_CLIENT_TOKEN" \
      http://127.0.0.1:8000/v1/devices
 ```
 
-For an always-on deployment and phone access over a private overlay, see
+Für Dauerbetrieb und Telefonzugriff über ein privates Netz:
 [docs/runbooks/remote-access.md](docs/runbooks/remote-access.md).
+Für Home Assistant: [docs/runbooks/home-assistant.md](docs/runbooks/home-assistant.md).
 
-Quality gates:
+Qualitätsprüfungen:
 
 ```bash
 uv run ruff check . && uv run ruff format --check .
@@ -242,42 +280,51 @@ uv run pytest
 ## API
 
 ```text
-GET  /v1/me
-GET  /v1/rooms
-GET  /v1/devices
-GET  /v1/devices/{id}
-POST /v1/devices/{id}/commands
-GET  /v1/commands/{id}
-GET  /v1/activity
-WS   /v1/ws
+GET    /v1/me
+GET    /v1/rooms
+GET    /v1/devices
+GET    /v1/devices/{id}
+POST   /v1/devices/{id}/commands
+GET    /v1/devices/{id}/schedules
+POST   /v1/devices/{id}/schedules
+DELETE /v1/schedules/{id}
+GET    /v1/commands/{id}
+GET    /v1/activity
+POST   /v1/auth/ws-ticket
+WS     /v1/ws
 ```
 
-There is deliberately no provider passthrough route. The gateway exposes
-semantic actions only.
+Eine Route, die Hersteller-Aufrufe durchreicht, gibt es bewusst nicht. Das
+Gateway bietet ausschließlich semantische Aktionen an.
 
-## Roadmap
+## Fahrplan
 
-| Phase | Goal | State |
+| Phase | Ziel | Stand |
 | --- | --- | --- |
-| 0 | Safe project foundation | Done |
-| 1 | End-to-end synthetic slice (Demo Pool), gateway and client | Done |
-| 2 | Bestway AirJet, read-only | Done, verified against the physical controller |
-| 3 | Bestway control, capability by capability | Done: bubbles, filter, heater, setpoint and panel lock |
-| 4 | Home Assistant adapter | Next |
-| 5 | Hue and Sonos | |
-| 6 | Nuki, after client authentication and a security review | |
-| 7–12 | tado°, Miele, Ring, Alexa, usability, analytics | |
+| 0 | Sicheres Projektfundament | Fertig |
+| 1 | Synthetische Strecke von Ende zu Ende (Demo-Pool), Gateway und Client | Fertig |
+| 2 | Bestway AirJet, nur lesend | Fertig, am physischen Controller verifiziert |
+| 3 | Bestway-Steuerung, Fähigkeit für Fähigkeit | Fertig: Düsen, Filter, Heizung, Sollwert, Bedienfeldsperre |
+| 4 | Home-Assistant-Adapter | Gebaut und gegen Simulator geprüft; wartet auf eine echte Instanz |
+| 5 | Hue und Sonos | Kommt mit Phase 4 ins Haus |
+| 6 | Nuki, nach Client-Authentifizierung und Sicherheitsprüfung | |
+| 7–12 | tado°, Miele, Ring, Alexa, Bedienkomfort, Auswertungen | |
 
-## Repository layout
+Offene Grundlagen, die keiner Phase gehören: Dauerbetrieb auf einem eigenen
+Rechner (Zeitpläne und Fernzugriff sterben sonst mit dem Laptop) und
+Persistenz — Aktivitätsprotokoll und Zeitpläne überleben derzeit keinen
+Neustart.
+
+## Verzeichnisse
 
 ```text
-apps/web/    installable web client, served by the gateway
-backend/     FastAPI gateway, adapters, tests
-docs/        architecture, ADRs, security and privacy documentation
-infrastructure/  container and deployment material
-scripts/     local helper scripts
+apps/web/         installierbarer Web-Client, vom Gateway ausgeliefert
+backend/          FastAPI-Gateway, Adapter, Tests
+docs/             Architektur, ADRs, Sicherheit und Datenschutz
+infrastructure/   Container- und Deployment-Material
+scripts/          lokale Hilfsskripte
 ```
 
-## License
+## Lizenz
 
-MIT — see [LICENSE](LICENSE).
+MIT — siehe [LICENSE](LICENSE).

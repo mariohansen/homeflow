@@ -113,6 +113,21 @@ export class Api {
     });
   }
 
+  schedules(deviceId) {
+    return this.#request(`/v1/devices/${encodeURIComponent(deviceId)}/schedules`);
+  }
+
+  createSchedule(deviceId, action, kind, hours) {
+    return this.#request(`/v1/devices/${encodeURIComponent(deviceId)}/schedules`, {
+      method: "POST",
+      body: { action, kind, hours },
+    });
+  }
+
+  cancelSchedule(scheduleId) {
+    return this.#request(`/v1/schedules/${encodeURIComponent(scheduleId)}`, { method: "DELETE" });
+  }
+
   /** Single-use, short-lived credential for the WebSocket handshake. */
   websocketTicket() {
     return this.#request("/v1/auth/ws-ticket", { method: "POST" });

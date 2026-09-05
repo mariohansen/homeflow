@@ -5,7 +5,7 @@
    stale reading shown as current is exactly what the state model forbids;
    see docs/architecture/overview.md. */
 
-const CACHE = "homeflow-shell-v4";
+const CACHE = "homeflow-shell-v9";
 const SHELL = [
   ".",
   "index.html",
@@ -13,6 +13,8 @@ const SHELL = [
   "manifest.webmanifest",
   "js/app.js",
   "js/api.js",
+  "js/dial.js",
+  "js/dom.js",
   "js/live.js",
   "js/render.js",
   "js/strings.js",

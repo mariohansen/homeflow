@@ -22,7 +22,8 @@ export class LiveConnection {
 
   /**
    * @param {import("./api.js").Api} api
-   * @param {{onState: Function, onResync: Function, onStatus: Function}} handlers
+   * @param {{onState: Function, onResync: Function, onStatus: Function,
+   *          onSchedule: Function}} handlers
    */
   constructor(api, handlers) {
     this.#api = api;
@@ -106,6 +107,12 @@ export class LiveConnection {
         return;
       case "ResyncRequired":
         this.#handlers.onResync();
+        return;
+      case "ScheduleArmed":
+      case "ScheduleSettled":
+        // A timer can be armed or fire from another phone, or fire on its own.
+        this.#handlers.onSchedule?.(frame);
+        if (frame.device) this.#handlers.onState(frame.device);
         return;
       default:
         if (frame.device) this.#handlers.onState(frame.device);

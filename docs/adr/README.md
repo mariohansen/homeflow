@@ -16,3 +16,4 @@ opinion; a changed decision gets a new record that supersedes the old one.
 | [0009](0009-deferred-persistence.md) | Deferred persistence for the first slice | Accepted |
 | [0010](0010-client-platform-open.md) | Client platform is an open decision | Resolved by 0011 |
 | [0011](0011-installable-web-client.md) | Installable web client | Accepted |
+| [0012](0012-one-shot-timers.md) | One-shot timers, and no automation engine | Accepted |

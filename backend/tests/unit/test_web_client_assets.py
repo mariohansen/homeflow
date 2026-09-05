@@ -47,12 +47,19 @@ def test_untrusted_device_text_never_reaches_inner_html() -> None:
         assert "eval(" not in source, f"{name} uses eval"
 
 
+#: XML namespace names look like URLs but are identifiers: nothing is fetched
+#: from them, and createElementNS requires this exact string.
+_NAMESPACES = frozenset({"http://www.w3.org/2000/svg"})
+
+
 def test_no_external_origin_is_referenced() -> None:
     """Everything is same-origin; the policy blocks anything else silently."""
     sources = {"index.html": _html(), "app.css": (WEB / "app.css").read_text(encoding="utf-8")}
     sources.update(_modules())
     for name, source in sources.items():
         for match in re.findall(r"https?://[^\s\"')]+", source):
+            if match in _NAMESPACES:
+                continue
             pytest.fail(f"{name} references an external origin: {match}")
 
 

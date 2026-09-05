@@ -58,6 +58,13 @@ class CommandNotFoundError(HomeFlowError):
     default_detail = "No such command."
 
 
+class ScheduleNotFoundError(HomeFlowError):
+    problem_type = "schedule_not_found"
+    title = "Timer not found"
+    status = 404
+    default_detail = "No such timer."
+
+
 class CapabilityNotSupportedError(HomeFlowError):
     problem_type = "capability_not_supported"
     title = "Unsupported action"

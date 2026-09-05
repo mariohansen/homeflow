@@ -30,8 +30,12 @@ from homeflow.integrations.bestway.datapoints import (
 )
 from homeflow.integrations.bestway.provider import BestwayProvider
 from homeflow.integrations.demo.provider import DemoProvider
+from homeflow.integrations.home_assistant.client import HomeAssistantClient
+from homeflow.integrations.home_assistant.provider import HomeAssistantProvider
+from homeflow.integrations.weather.provider import OpenMeteoProvider
 from homeflow.log import get_logger
 from homeflow.ratelimit import RateLimiter
+from homeflow.schedules.service import ScheduleService
 
 _logger = get_logger(__name__)
 
@@ -47,6 +51,7 @@ class Container:
     registry: DeviceRegistry
     devices: DeviceService
     commands: CommandService
+    schedules: ScheduleService
     providers: dict[str, DeviceProvider]
     auth_rate_limiter: RateLimiter
     command_rate_limiter: RateLimiter
@@ -104,6 +109,44 @@ def build_providers(settings: Settings, clock: Clock) -> dict[str, DeviceProvide
             released_for_writing=sorted(item.value for item in profile.writable),
         )
 
+    if (
+        settings.home_assistant_enabled
+        and settings.home_assistant_base_url
+        and settings.home_assistant_token
+    ):
+        home_assistant = HomeAssistantProvider(
+            client=HomeAssistantClient(
+                base_url=settings.home_assistant_base_url,
+                token=settings.home_assistant_token,
+                timeout_seconds=settings.home_assistant_timeout_seconds,
+            ),
+            released_domains=frozenset(settings.home_assistant_write_enabled),
+            clock=clock,
+        )
+        providers[home_assistant.name] = home_assistant
+        # Neither the address nor the token is logged.
+        _logger.info(
+            "providers.home_assistant_configured",
+            provider=home_assistant.name,
+            released_for_writing=sorted(home_assistant.released_domains),
+        )
+
+    if (
+        settings.weather_enabled
+        and settings.weather_latitude is not None
+        and settings.weather_longitude is not None
+    ):
+        weather = OpenMeteoProvider(
+            latitude=settings.weather_latitude,
+            longitude=settings.weather_longitude,
+            clock=clock,
+            display_name=settings.weather_display_name,
+            poll_seconds=settings.weather_poll_seconds,
+        )
+        providers[weather.name] = weather
+        # The coordinates themselves are not logged.
+        _logger.info("providers.weather_configured", provider=weather.name)
+
     if not providers:
         # Better an empty, harmless device list than a guess about the household.
         _logger.warning("providers.none_configured", demo_mode=False)
@@ -125,6 +168,14 @@ def build_container(settings: Settings, *, clock: Clock | None = None) -> Contai
         clock=resolved_clock,
         settings=settings,
     )
+    schedules = ScheduleService(
+        commands=commands,
+        devices=devices,
+        bus=bus,
+        audit=audit,
+        clock=resolved_clock,
+        settings=settings,
+    )
     return Container(
         settings=settings,
         clock=resolved_clock,
@@ -135,6 +186,7 @@ def build_container(settings: Settings, *, clock: Clock | None = None) -> Contai
         registry=registry,
         devices=devices,
         commands=commands,
+        schedules=schedules,
         providers=providers,
         auth_rate_limiter=RateLimiter(rate_per_minute=30, clock=resolved_clock, burst=10),
         command_rate_limiter=RateLimiter(

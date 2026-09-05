@@ -7,7 +7,14 @@ from uuid import UUID
 
 from homeflow.capabilities import DeviceKind
 from homeflow.clock import Clock
-from homeflow.devices.models import Availability, Device, ProgramState, Room, StateSource
+from homeflow.devices.models import (
+    Availability,
+    Device,
+    DeviceState,
+    ProgramState,
+    Room,
+    StateSource,
+)
 from homeflow.devices.registry import DeviceRegistry
 from homeflow.events.bus import EventBus
 from homeflow.events.models import DomainEvent, EventType
@@ -67,13 +74,32 @@ class DeviceService:
         before = self._registry.require(device_id)
         after = self._registry.apply(
             device_id,
-            state=provider_state.state,
+            state=self._with_derived(before, provider_state.state),
             availability=provider_state.availability,
             observed_at=provider_state.observed_at,
             source=source,
         )
         self._publish_transitions(before, after, correlation_id=correlation_id)
         return after
+
+    def _with_derived(self, before: Device, observed: DeviceState) -> DeviceState:
+        """Add what the gateway knows and the adapter does not.
+
+        A controller reports whether the pump runs, not when it started. Seeing
+        the transition is the only way to answer "last filtered", so the moment
+        is recorded here as the pump comes on, and carried forward across every
+        later observation -- an adapter never reports it, so without this the
+        answer would be lost the instant the pump stopped.
+
+        A pump already running when the gateway starts leaves this empty: the
+        honest answer is that we did not see it start.
+        """
+        if observed.filter_pump and not before.state.filter_pump:
+            return observed.model_copy(update={"filter_last_started_at": self._clock.now()})
+        remembered = before.state.filter_last_started_at
+        if remembered is not None and observed.filter_last_started_at is None:
+            return observed.model_copy(update={"filter_last_started_at": remembered})
+        return observed
 
     def _publish_transitions(
         self,

@@ -61,6 +61,9 @@ class DeviceState(BaseModel):
     target_temperature_c: float | None = None
     heater: bool | None = None
     filter_pump: bool | None = None
+    #: Derived, not reported: when the gateway last saw the pump start. Held in
+    #: memory, so a restart forgets it until the pump next runs.
+    filter_last_started_at: datetime | None = None
     bubbles: bool | None = None
     control_panel_lock: bool | None = None
 

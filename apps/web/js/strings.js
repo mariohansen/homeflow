@@ -60,11 +60,30 @@ const de = {
 
   "pool.current": "Wassertemperatur",
   "pool.target": "Ziel {value} °C",
+  "pool.targetShort": "Ziel",
   "pool.targetLabel": "Zieltemperatur",
+  "pool.lastFiltered": "Zuletzt gefiltert",
+  "pool.filteringNow": "Läuft gerade",
+  "pool.lastFilteredUnknown":
+    "Noch nicht beobachtet",
   "pool.heater": "Heizung",
   "pool.filter": "Filterpumpe",
   "pool.bubbles": "Massagedüsen",
   "pool.panelLock": "Bedienfeldsperre",
+
+  "timer.title": "Zeitplan",
+  "timer.hours": "Dauer",
+  "timer.startIn": "Start in",
+  "timer.runFor": "Laufzeit",
+  "timer.cancel": "Abbrechen",
+  "timer.startsIn": "startet in {value}",
+  "timer.stopsIn": "stoppt in {value}",
+  "timer.due": "läuft jeden Moment",
+  "timer.note":
+    "Ein Zeitplan schaltet genau einmal. Wenn das Gerät dann nicht erreichbar ist, wird nichts wiederholt – du siehst es in der Aktivität.",
+
+  "climate.target": "Zieltemperatur",
+  "climate.heating": "Heizt",
 
   "lock.LOCKED": "Abgeschlossen",
   "lock.UNLOCKED": "Entriegelt",
@@ -85,6 +104,8 @@ const de = {
 
   "command.unknown":
     "Das Gerät hat nicht rechtzeitig geantwortet. Ob der Befehl ausgeführt wurde, ist unklar.",
+  "command.notApplied":
+    "Das Gerät hat geantwortet, aber den Wert nicht übernommen. Der Controller sperrt manche Funktionen, solange die Heizung läuft – dann zuerst die Heizung ausschalten.",
   "command.failed": "Befehl fehlgeschlagen.",
 
   "error.unauthenticated": "Zugang abgelehnt. Bitte neu verbinden.",
@@ -105,8 +126,13 @@ const de = {
   "activity.command.completed": "Befehl abgeschlossen",
   "activity.command.denied": "Befehl abgelehnt",
 
+  "time.hours": "{hours} Std",
   "time.hoursMinutes": "{hours} Std {minutes} Min",
   "time.minutes": "{minutes} Min",
+  "time.today": "Heute, {time} Uhr",
+  "time.yesterday": "Gestern, {time} Uhr",
+  "time.weekday": "{weekday}, {time} Uhr",
+  "time.date": "{date}, {time} Uhr",
 };
 
 const catalogue = { de };

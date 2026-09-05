@@ -29,6 +29,7 @@ from homeflow.devices.models import (
     Room,
     StateSource,
 )
+from homeflow.schedules.models import Schedule, ScheduleKind, ScheduleStatus
 
 
 class ApiModel(BaseModel):
@@ -47,6 +48,7 @@ class DeviceStateResponse(ApiModel):
     target_temperature_c: float | None = None
     heater: bool | None = None
     filter_pump: bool | None = None
+    filter_last_started_at: datetime | None = None
     bubbles: bool | None = None
     control_panel_lock: bool | None = None
     lock_state: LockState | None = None
@@ -110,6 +112,45 @@ class DeviceResponse(ApiModel):
             state_source=device.state_source,
             is_stale=device.is_stale(now=now, stale_after_seconds=stale_after_seconds),
         )
+
+
+class ScheduleResponse(ApiModel):
+    id: UUID
+    device_id: UUID
+    kind: ScheduleKind
+    action: Action
+    #: What will be applied when the timer runs out.
+    desired: bool
+    created_at: datetime
+    due_at: datetime
+    status: ScheduleStatus
+    failure_code: str | None = None
+
+    @classmethod
+    def from_domain(cls, schedule: Schedule) -> ScheduleResponse:
+        return cls(
+            id=schedule.id,
+            device_id=schedule.device_id,
+            kind=schedule.kind,
+            action=schedule.action,
+            desired=schedule.desired,
+            created_at=schedule.created_at,
+            due_at=schedule.due_at,
+            status=schedule.status,
+            failure_code=schedule.failure_code,
+        )
+
+
+class CreateScheduleRequest(ApiModel):
+    """Ask for one action, once, in a bounded number of hours.
+
+    The moment is expressed as a delay rather than an absolute time so that a
+    client with a wrong clock cannot schedule a physical write into next week.
+    """
+
+    action: Action
+    kind: ScheduleKind
+    hours: float = Field(gt=0.0, le=48.0)
 
 
 class RoomResponse(ApiModel):

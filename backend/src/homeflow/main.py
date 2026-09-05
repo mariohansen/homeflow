@@ -82,6 +82,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             for provider in container.providers.values()
         ]
+        # Timers survive only as long as the process; a restart forgets them,
+        # which is the honest behaviour until there is a database behind them.
+        tasks.append(asyncio.create_task(container.schedules.run(), name="schedules"))
         _logger.info(
             "gateway.started",
             env=resolved.env.value,

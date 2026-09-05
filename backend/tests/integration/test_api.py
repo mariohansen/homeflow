@@ -225,3 +225,58 @@ def test_repeated_failures_are_throttled(client: TestClient) -> None:
     statuses = {client.get("/v1/devices", headers=wrong).status_code for _ in range(40)}
     assert 401 in statuses, "the first attempts are simply refused"
     assert 429 in statuses, "persistent guessing is throttled"
+
+
+def test_a_timer_is_listed_and_can_be_cancelled(client: TestClient, auth: dict[str, str]) -> None:
+    pool = _pool(client, auth)
+
+    created = client.post(
+        f"/v1/devices/{pool['id']}/schedules",
+        json={"action": "SET_HEATER", "kind": "DELAYED_START", "hours": 3},
+        headers=auth,
+    )
+    assert created.status_code == 200
+    body = created.json()
+    assert body["status"] == "ARMED"
+    assert body["desired"] is True
+    assert body["dueAt"] > body["createdAt"]
+
+    listed = client.get(f"/v1/devices/{pool['id']}/schedules", headers=auth)
+    assert [item["id"] for item in listed.json()] == [body["id"]]
+
+    cancelled = client.delete(f"/v1/schedules/{body['id']}", headers=auth)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "CANCELLED"
+    assert client.get(f"/v1/devices/{pool['id']}/schedules", headers=auth).json() == []
+
+
+def test_a_timer_needs_a_credential(client: TestClient, auth: dict[str, str]) -> None:
+    pool = _pool(client, auth)
+    response = client.post(
+        f"/v1/devices/{pool['id']}/schedules",
+        json={"action": "SET_HEATER", "kind": "DELAYED_START", "hours": 3},
+    )
+    assert response.status_code == 401
+
+
+def test_a_door_cannot_be_put_on_a_timer(client: TestClient, auth: dict[str, str]) -> None:
+    """No client payload may turn an unattended write into door access."""
+    lock = next(device for device in _devices(client, auth) if device["kind"] == "LOCK")
+    response = client.post(
+        f"/v1/devices/{lock['id']}/schedules",
+        json={"action": "SET_LOCK_STATE", "kind": "DELAYED_START", "hours": 1},
+        headers=auth,
+    )
+    assert response.status_code == 422
+    assert response.json()["type"] == "capability_not_supported"
+
+
+def test_an_unbounded_timer_is_refused(client: TestClient, auth: dict[str, str]) -> None:
+    pool = _pool(client, auth)
+    for hours in (0, 0.25, 100):
+        response = client.post(
+            f"/v1/devices/{pool['id']}/schedules",
+            json={"action": "SET_HEATER", "kind": "DELAYED_START", "hours": hours},
+            headers=auth,
+        )
+        assert response.status_code == 422, hours

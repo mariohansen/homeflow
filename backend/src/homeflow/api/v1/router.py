@@ -14,9 +14,11 @@ from homeflow.api.deps import CommandPrincipal, CorrelationId, CurrentContainer,
 from homeflow.api.schemas import (
     ActivityEntryResponse,
     CommandResponse,
+    CreateScheduleRequest,
     DeviceResponse,
     MeResponse,
     RoomResponse,
+    ScheduleResponse,
     SubmitCommandRequest,
 )
 from homeflow.container import Container
@@ -89,6 +91,55 @@ async def submit_command(
         correlation_id=correlation_id,
     )
     return CommandResponse.from_domain(command)
+
+
+@router.get("/devices/{device_id}/schedules", response_model=list[ScheduleResponse])
+def list_schedules(
+    device_id: UUID,
+    principal: CurrentPrincipal,
+    container: CurrentContainer,
+) -> list[ScheduleResponse]:
+    # Raises if the device is unknown, so a timer listing cannot be used to
+    # probe which identifiers exist.
+    container.devices.get(device_id)
+    return [
+        ScheduleResponse.from_domain(item) for item in container.schedules.for_device(device_id)
+    ]
+
+
+@router.post("/devices/{device_id}/schedules", response_model=ScheduleResponse)
+async def create_schedule(
+    device_id: UUID,
+    payload: CreateScheduleRequest,
+    principal: CommandPrincipal,
+    container: CurrentContainer,
+    correlation_id: CorrelationId,
+) -> ScheduleResponse:
+    """Arm one timer.
+
+    A timer is the only unattended physical write in HomeFlow. It is limited to
+    functions the operator has released for this device, it fires once, and it
+    goes through the same command pipeline as a tap (see
+    docs/adr/0012-one-shot-timers.md).
+    """
+    schedule = await container.schedules.create(
+        principal,
+        device_id,
+        payload.action,
+        payload.kind,
+        payload.hours,
+        correlation_id=correlation_id,
+    )
+    return ScheduleResponse.from_domain(schedule)
+
+
+@router.delete("/schedules/{schedule_id}", response_model=ScheduleResponse)
+def cancel_schedule(
+    schedule_id: UUID,
+    principal: CommandPrincipal,
+    container: CurrentContainer,
+) -> ScheduleResponse:
+    return ScheduleResponse.from_domain(container.schedules.cancel(principal, schedule_id))
 
 
 @router.get("/commands/{command_id}", response_model=CommandResponse)

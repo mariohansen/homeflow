@@ -32,6 +32,9 @@ class EventType(StrEnum):
 
     THERMOSTAT_STATE_CHANGED = "ThermostatStateChanged"
 
+    SCHEDULE_ARMED = "ScheduleArmed"
+    SCHEDULE_SETTLED = "ScheduleSettled"
+
 
 class DomainEvent(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

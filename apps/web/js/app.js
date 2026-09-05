@@ -12,6 +12,8 @@ import { renderActivityEntry, renderDevice, renderRoom } from "./render.js";
 
 const HOLD_RELEASE_MS = 5000;
 const TOAST_MS = 4000;
+//: A countdown only has to look right to a person reading it.
+const COUNTDOWN_MS = 30000;
 
 const dom = {
   connect: document.getElementById("view-connect"),
@@ -28,6 +30,7 @@ const dom = {
     activity: document.getElementById("view-activity"),
     settings: document.getElementById("view-settings"),
   },
+  summary: document.getElementById("home-summary"),
   rooms: document.getElementById("home-rooms"),
   homeEmpty: document.getElementById("home-empty"),
   activityList: document.getElementById("activity-list"),
@@ -46,10 +49,15 @@ const state = {
   live: null,
   identity: null,
   devices: new Map(),
+  schedules: new Map(),
+  countdown: null,
   busy: new Set(),
   // At most one waiting request per control: a newer desired value makes the
   // one queued behind it pointless, so it replaces it.
   queued: new Map(),
+  // What has been asked for and not yet confirmed. Shown as pending, never as
+  // done, and dropped the moment the gateway reports real state.
+  desired: new Map(),
   held: new Map(),
   notices: new Map(),
   view: "home",
@@ -65,6 +73,10 @@ const ctx = {
   noticeFor: (deviceId) => state.notices.get(deviceId) ?? null,
   holdRender: (deviceId) => holdRender(deviceId),
   execute: (device, action, parameters) => execute(device, action, parameters),
+  desiredFor: (deviceId, action) => state.desired.get(pendingKey(deviceId, action)) ?? null,
+  schedulesFor: (deviceId) => state.schedules.get(deviceId) ?? [],
+  createTimer: (device, action, kind, hours) => createTimer(device, action, kind, hours),
+  cancelTimer: (device, schedule) => cancelTimer(device, schedule),
 };
 
 function holdRender(deviceId) {
@@ -84,10 +96,15 @@ function releaseHold(deviceId) {
 
 async function execute(device, action, parameters) {
   const key = pendingKey(device.id, action);
+  // An on/off request carries what the user wants to see happen. Remembering it
+  // lets the control follow the finger while the controller catches up.
+  if (typeof parameters?.on === "boolean") state.desired.set(key, parameters.on);
+
   if (state.busy.has(key)) {
     // Commands are desired state, so only the last one matters. Queueing them
     // all would make the device work through a history nobody wants.
     state.queued.set(key, { device, action, parameters });
+    patchDevice(device.id, { force: true });
     return;
   }
 
@@ -98,7 +115,13 @@ async function execute(device, action, parameters) {
   try {
     const command = await state.api.submitCommand(device.id, action, parameters);
     if (command.status === "UNKNOWN") {
-      state.notices.set(device.id, { kind: "unknown", text: t("command.unknown") });
+      // The gateway distinguishes "no answer" from "answered, and the value did
+      // not change". They mean different things to whoever is standing there.
+      const refused = command.failureCode === "not_confirmed_by_device";
+      state.notices.set(device.id, {
+        kind: "unknown",
+        text: refused ? t("command.notApplied") : t("command.unknown"),
+      });
     } else if (command.status !== "SUCCEEDED") {
       state.notices.set(device.id, {
         kind: "error",
@@ -125,13 +148,87 @@ async function execute(device, action, parameters) {
     return;
   }
 
+  // From here on the gateway's confirmed state is what the control shows.
+  state.desired.delete(key);
   releaseHold(device.id);
   // The command response reflects the device; refresh from the snapshot so the
   // card shows confirmed state rather than what we hoped for.
   await refreshDevices();
 }
 
+/* --- Timers ---------------------------------------------------------------
+
+   A timer is the only thing that reaches a device unattended, so the interface
+   never claims one exists until the gateway has confirmed it, and never leaves
+   a failure silent. */
+
+const TIMED_ACTIONS = ["SET_HEATER", "SET_FILTER"];
+
+const canBeTimed = (device) =>
+  device.kind === "POOL" && device.capabilities.some((item) => ["HEATING", "FILTER"].includes(item));
+
+async function withTimerFeedback(device, action, work) {
+  const key = pendingKey(device.id, `TIMER_${action}`);
+  if (state.busy.has(key)) return;
+  state.busy.add(key);
+  state.notices.delete(device.id);
+  patchDevice(device.id, { force: true });
+  try {
+    await work();
+  } catch (error) {
+    if (error instanceof ApiError && error.type === "unauthenticated") {
+      signOut();
+      return;
+    }
+    const message = error instanceof ApiError ? error.localizedMessage : t("error.network");
+    state.notices.set(device.id, { kind: "error", text: message });
+  } finally {
+    state.busy.delete(key);
+  }
+  await refreshSchedules();
+  await refreshDevices();
+}
+
+function createTimer(device, action, kind, hours) {
+  return withTimerFeedback(device, action, () =>
+    state.api.createSchedule(device.id, action, kind, hours),
+  );
+}
+
+function cancelTimer(device, schedule) {
+  return withTimerFeedback(device, schedule.action, () => state.api.cancelSchedule(schedule.id));
+}
+
+async function refreshSchedules() {
+  const devices = [...state.devices.values()].filter(canBeTimed);
+  const listings = await Promise.all(
+    devices.map(async (device) => [device.id, await state.api.schedules(device.id)]),
+  );
+  state.schedules = new Map(listings);
+  armCountdown();
+}
+
+/* An armed timer is the only thing on the page whose text goes stale on its
+   own, so it is also the only thing that gets a repaint on a clock. */
+function armCountdown() {
+  const armed = [...state.schedules.values()].some((items) => items.length > 0);
+  if (armed && state.countdown === null) {
+    state.countdown = window.setInterval(() => {
+      for (const [deviceId, items] of state.schedules) {
+        if (items.length) patchDevice(deviceId);
+      }
+    }, COUNTDOWN_MS);
+  } else if (!armed && state.countdown !== null) {
+    window.clearInterval(state.countdown);
+    state.countdown = null;
+  }
+}
+
 /* --- Rendering ------------------------------------------------------------ */
+
+/* An outdoor thermometer belongs to no room and is not something to operate.
+   It reads as context for everything below it, so it sits above the rooms. */
+const isAmbient = (device) => device.kind === "SENSOR";
 
 function groupByRoom(devices) {
   const groups = new Map();
@@ -146,15 +243,23 @@ function groupByRoom(devices) {
 function renderHome() {
   const devices = [...state.devices.values()];
   dom.homeEmpty.hidden = devices.length > 0;
+
+  const ambient = devices.filter(isAmbient);
+  dom.summary.hidden = ambient.length === 0;
+  dom.summary.replaceChildren(...ambient.map((device) => renderDevice(device, ctx)));
+
   dom.rooms.replaceChildren(
-    ...groupByRoom(devices).map(([room, roomDevices]) => renderRoom(room, roomDevices, ctx)),
+    ...groupByRoom(devices.filter((device) => !isAmbient(device))).map(([room, roomDevices]) =>
+      renderRoom(room, roomDevices, ctx),
+    ),
   );
 }
 
 function patchDevice(deviceId, { force = false } = {}) {
   if (!force && state.held.has(deviceId)) return;
   const device = state.devices.get(deviceId);
-  const existing = dom.rooms.querySelector(`[data-device-id="${CSS.escape(deviceId)}"]`);
+  const selector = `[data-device-id="${CSS.escape(deviceId)}"]`;
+  const existing = dom.rooms.querySelector(selector) ?? dom.summary.querySelector(selector);
   if (!device || !existing) {
     renderHome();
     return;
@@ -228,9 +333,15 @@ async function startSession(token) {
 
   await refreshDevices();
 
+  await refreshSchedules();
+
   state.live = new LiveConnection(api, {
     onStatus: setLinkState,
-    onResync: () => refreshDevices().catch(reportError),
+    onResync: () => {
+      refreshDevices().catch(reportError);
+      refreshSchedules().catch(reportError);
+    },
+    onSchedule: () => refreshSchedules().catch(reportError),
     onState: (device) => {
       state.devices.set(device.id, device);
       patchDevice(device.id);
@@ -248,6 +359,12 @@ function signOut() {
   state.live?.stop();
   state.live = null;
   state.api = null;
+  if (state.countdown !== null) {
+    window.clearInterval(state.countdown);
+    state.countdown = null;
+  }
+  state.schedules.clear();
+  state.desired.clear();
   state.devices.clear();
   state.notices.clear();
   state.busy.clear();
